@@ -2,10 +2,12 @@ import io
 import math
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import quote
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
+import requests
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
@@ -17,7 +19,42 @@ try:
 except Exception:
     OpenAI = None
 
+CODA_API_TOKEN = "c0363815-0fb2-4bd1-86fc-3fcde9be9b3c"
+CODA_DOC_ID = "xyz123"
+CODA_TABLE_NAME = "PMS PMCF Analysis"
+
 st.set_page_config(page_title="AI PMS/PMCF Intelligence Platform", layout="wide")
+
+
+def send_analysis_to_coda(run_id, complaint_text, pmcf_text, signal, risk, summary, related_hazard):
+    encoded_table_name = quote(CODA_TABLE_NAME, safe="")
+    url = f"https://coda.io/apis/v1/docs/{CODA_DOC_ID}/tables/{encoded_table_name}/rows"
+
+    headers = {
+        "Authorization": f"Bearer {CODA_API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "rows": [
+            {
+                "cells": [
+                    {"column": "Run ID", "value": run_id},
+                    {"column": "Complaint Text", "value": complaint_text},
+                    {"column": "PMCF Text", "value": pmcf_text},
+                    {"column": "Signal", "value": str(signal)},
+                    {"column": "Risk", "value": str(risk)},
+                    {"column": "Summary", "value": str(summary)},
+                    {"column": "Related Hazard", "value": related_hazard},
+                    {"column": "Created At", "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+                ]
+            }
+        ]
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    return response.status_code, response.text
+
 
 ISSUE_KEYWORDS: Dict[str, List[str]] = {
     "Breakage": ["break", "broken", "fracture", "snap", "파손", "부러", "깨짐"],
@@ -664,6 +701,8 @@ with c2:
     )
     pmcf_file = st.file_uploader("PMCF 파일 업로드", type=["csv", "xlsx", "xls"], key="pmcf")
 
+related_hazard = st.text_input("Related Hazard ID (예: HZ-001)")
+
 if st.button("🚀 Run Full Analysis", use_container_width=True):
     with st.spinner("데이터 정리 및 분석 중..."):
         try:
@@ -702,7 +741,22 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         pdf_bytes = generate_pdf(issue_table, pmcf_table, summary, signal, risk)
         pmcf_kpis = build_structured_pmcf_kpis(pmcf_df)
 
-    st.success("분석 완료")
+        run_id = f"RUN-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        status_code, response_text = send_analysis_to_coda(
+            run_id=run_id,
+            complaint_text=complaint_text,
+            pmcf_text=pmcf_text,
+            signal=signal,
+            risk=risk,
+            summary=summary,
+            related_hazard=related_hazard
+        )
+
+        if status_code == 202:
+            st.success("분석 완료 + Coda 저장 성공")
+        else:
+            st.warning(f"Coda 저장 실패: {status_code}")
+            st.text(response_text)
 
     kc1, kc2, kc3, kc4 = st.columns(4)
     kc1.metric("Complaint Count", len(complaint_df))

@@ -19,7 +19,7 @@ try:
 except Exception:
     OpenAI = None
 
-CODA_API_TOKEN = "c0363815-0fb2-4bd1-86fc-3fcde9be9b3c"
+CODA_API_TOKEN = "4840c197-ef3c-424a-9c1c-7cb580cd7b06"
 CODA_DOC_ID = "d8efB__Jjpq"
 CODA_TABLE_NAME = "PMS PMCF Analysis"
 

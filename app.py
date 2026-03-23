@@ -846,7 +846,7 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
             st.markdown("**PMCF Records**")
             st.dataframe(pmcf_df, use_container_width=True)
 
-   st.divider()
+st.divider()
 st.subheader("Coda 연결 디버그")
 
 st.code(f"CODA_DOC_ID = {CODA_DOC_ID}")

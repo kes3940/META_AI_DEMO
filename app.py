@@ -20,7 +20,7 @@ except Exception:
     OpenAI = None
 
 CODA_API_TOKEN = "c0363815-0fb2-4bd1-86fc-3fcde9be9b3c"
-CODA_DOC_ID = "xyz123"
+CODA_DOC_ID = "d8efB__Jjpq"
 CODA_TABLE_NAME = "PMS PMCF Analysis"
 
 st.set_page_config(page_title="AI PMS/PMCF Intelligence Platform", layout="wide")

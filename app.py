@@ -20,7 +20,7 @@ except Exception:
     OpenAI = None
 
 CODA_API_TOKEN = "c0363815-0fb2-4bd1-86fc-3fcde9be9b3c"
-CODA_DOC_ID = "d8efB__Jjpq"
+CODA_DOC_ID = "xyz123"
 CODA_TABLE_NAME = "PMS PMCF Analysis"
 
 st.set_page_config(page_title="AI PMS/PMCF Intelligence Platform", layout="wide")
@@ -845,3 +845,13 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         if not pmcf_df.empty:
             st.markdown("**PMCF Records**")
             st.dataframe(pmcf_df, use_container_width=True)
+
+            if st.button("🔍 Coda 문서 목록 확인"):
+    headers = {
+        "Authorization": f"Bearer {CODA_API_TOKEN}"
+    }
+
+    res = requests.get("https://coda.io/apis/v1/docs", headers=headers)
+
+    st.write("Status:", res.status_code)
+    st.json(res.json())

@@ -20,7 +20,7 @@ except Exception:
     OpenAI = None
 
 CODA_API_TOKEN = "4840c197-ef3c-424a-9c1c-7cb580cd7b06"
-CODA_DOC_ID = "d8efB__Jjpq"
+CODA_DOC_ID = "8efB__Jjpq"
 CODA_TABLE_NAME = "PMS PMCF Analysis"
 
 st.set_page_config(page_title="AI PMS/PMCF Intelligence Platform", layout="wide")
@@ -846,7 +846,7 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
             st.markdown("**PMCF Records**")
             st.dataframe(pmcf_df, use_container_width=True)
 
-st.divider()
+   st.divider()
 st.subheader("Coda 연결 디버그")
 
 st.code(f"CODA_DOC_ID = {CODA_DOC_ID}")

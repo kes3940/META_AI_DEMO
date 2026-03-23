@@ -845,4 +845,29 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         if not pmcf_df.empty:
             st.markdown("**PMCF Records**")
             st.dataframe(pmcf_df, use_container_width=True)
-        
+
+   st.divider()
+st.subheader("Coda 연결 디버그")
+
+st.code(f"CODA_DOC_ID = {CODA_DOC_ID}")
+st.code(f"CODA_TABLE_NAME = {CODA_TABLE_NAME}")
+st.code(f"TOKEN PREFIX = {CODA_API_TOKEN[:8]}...")
+
+if st.button("🔍 Coda 문서 목록 조회"):
+    headers = {"Authorization": f"Bearer {CODA_API_TOKEN}"}
+    res = requests.get("https://coda.io/apis/v1/docs", headers=headers)
+    st.write("Status:", res.status_code)
+    try:
+        st.json(res.json())
+    except Exception:
+        st.text(res.text)
+
+if st.button("🔎 현재 DOC_ID 직접 조회"):
+    headers = {"Authorization": f"Bearer {CODA_API_TOKEN}"}
+    url = f"https://coda.io/apis/v1/docs/{CODA_DOC_ID}"
+    res = requests.get(url, headers=headers)
+    st.write("Status:", res.status_code)
+    try:
+        st.json(res.json())
+    except Exception:
+        st.text(res.text)     

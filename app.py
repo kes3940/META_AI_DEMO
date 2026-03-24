@@ -680,50 +680,51 @@ def generate_pdf(issue_table: pd.DataFrame, pmcf_table: pd.DataFrame, summary: s
 # ── [CHANGE 2 & 3] matplotlib charts with smaller bars and multi-color ───────
 def plot_issue_bar(issue_table: pd.DataFrame):
     n = len(issue_table)
-    bar_width = max(0.3, min(0.5, 4.0 / max(n, 1)))
+    bar_width = max(0.15, min(0.25, 2.0 / max(n, 1)))
     colors = ["#2196F3", "#4CAF50", "#FF9800", "#F44336", "#AB47BC", "#26C6DA"][:n]
-    fig, ax = plt.subplots(figsize=(6, 3.5))
+    fig, ax = plt.subplots(figsize=(4.5, 2.8))
     x = range(n)
     ax.bar(x, issue_table["Count"], width=bar_width, color=colors[:n])
     ax.set_xticks(list(x))
-    ax.set_xticklabels(issue_table["Issue"], rotation=30, ha="right", fontsize=9)
-    ax.set_title("Complaint Issue Frequency", fontsize=11)
-    ax.set_ylabel("Count")
-    ax.set_xlabel("Issue")
+    ax.set_xticklabels(issue_table["Issue"], rotation=30, ha="right", fontsize=8)
+    ax.set_title("Complaint Issue Frequency", fontsize=10)
+    ax.set_ylabel("Count", fontsize=8)
+    ax.tick_params(axis="y", labelsize=8)
     plt.tight_layout()
     return fig
 
 
 def plot_pmcf_bar(pmcf_table: pd.DataFrame):
     n = len(pmcf_table)
-    bar_width = max(0.3, min(0.5, 3.0 / max(n, 1)))
+    bar_width = max(0.15, min(0.25, 2.0 / max(n, 1)))
     colors = ["#4CAF50", "#F44336", "#FF9800"][:n]
-    fig, ax = plt.subplots(figsize=(5, 3.5))
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
     x = range(n)
     ax.bar(x, pmcf_table["Count"], width=bar_width, color=colors[:n])
     ax.set_xticks(list(x))
-    ax.set_xticklabels(pmcf_table["PMCF Assessment"], rotation=0, ha="center", fontsize=9)
-    ax.set_title("PMCF Response Distribution", fontsize=11)
-    ax.set_ylabel("Count")
-    ax.set_xlabel("Assessment")
+    ax.set_xticklabels(pmcf_table["PMCF Assessment"], rotation=0, ha="center", fontsize=8)
+    ax.set_title("PMCF Response Distribution", fontsize=10)
+    ax.set_ylabel("Count", fontsize=8)
+    ax.tick_params(axis="y", labelsize=8)
     plt.tight_layout()
     return fig
 
 
-# ── [CHANGE 2 & 3] matplotlib-based KPI charts (replaces st.bar_chart) ───────
+# ── [CHANGE 2 & 3] matplotlib-based KPI charts — compact, for inline 3-col row
 def plot_performance(perf: pd.Series):
     labels = perf.index.tolist()
     values = perf.values.tolist()
     n = len(labels)
-    bar_width = max(0.3, min(0.5, 4.0 / max(n, 1)))
+    bar_width = max(0.15, min(0.25, 2.0 / max(n, 1)))
     colors = PERF_COLORS[:n]
-    fig, ax = plt.subplots(figsize=(5, 3))
+    fig, ax = plt.subplots(figsize=(3.2, 2.4))
     x = range(n)
     ax.bar(x, values, width=bar_width, color=colors)
     ax.set_xticks(list(x))
-    ax.set_xticklabels(labels, rotation=20, ha="right", fontsize=9)
-    ax.set_title("Performance Distribution", fontsize=11)
-    ax.set_ylabel("Count")
+    ax.set_xticklabels(labels, rotation=20, ha="right", fontsize=7)
+    ax.set_title("Performance", fontsize=9)
+    ax.set_ylabel("Count", fontsize=7)
+    ax.tick_params(axis="y", labelsize=7)
     plt.tight_layout()
     return fig
 
@@ -732,15 +733,16 @@ def plot_followup(followup_dist: pd.Series):
     labels = followup_dist.index.tolist()
     values = followup_dist.values.tolist()
     n = len(labels)
-    bar_width = max(0.3, min(0.5, 3.0 / max(n, 1)))
+    bar_width = max(0.15, min(0.25, 2.0 / max(n, 1)))
     colors = FOLLOW_COLORS[:n]
-    fig, ax = plt.subplots(figsize=(4, 3))
+    fig, ax = plt.subplots(figsize=(3.2, 2.4))
     x = range(n)
     ax.bar(x, values, width=bar_width, color=colors)
     ax.set_xticks(list(x))
-    ax.set_xticklabels(labels, rotation=0, ha="center", fontsize=9)
-    ax.set_title("Follow-up Period Distribution", fontsize=11)
-    ax.set_ylabel("Count")
+    ax.set_xticklabels(labels, rotation=0, ha="center", fontsize=7)
+    ax.set_title("Follow-up Period", fontsize=9)
+    ax.set_ylabel("Count", fontsize=7)
+    ax.tick_params(axis="y", labelsize=7)
     plt.tight_layout()
     return fig
 
@@ -749,15 +751,16 @@ def plot_country(country_dist: pd.DataFrame):
     labels = country_dist["Country"].tolist()
     values = country_dist["Count"].tolist()
     n = len(labels)
-    bar_width = max(0.25, min(0.5, 5.0 / max(n, 1)))
+    bar_width = max(0.15, min(0.25, 2.5 / max(n, 1)))
     colors = (COUNTRY_COLORS * math.ceil(n / len(COUNTRY_COLORS)))[:n]
-    fig, ax = plt.subplots(figsize=(5, 3))
+    fig, ax = plt.subplots(figsize=(3.2, 2.4))
     x = range(n)
     ax.bar(x, values, width=bar_width, color=colors)
     ax.set_xticks(list(x))
-    ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
-    ax.set_title("Country Distribution", fontsize=11)
-    ax.set_ylabel("Count")
+    ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=7)
+    ax.set_title("Country", fontsize=9)
+    ax.set_ylabel("Count", fontsize=7)
+    ax.tick_params(axis="y", labelsize=7)
     plt.tight_layout()
     return fig
 
@@ -971,12 +974,15 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         pc4.metric("Migration Rate",        f"{pmcf_kpis['migration_rate']}%")
         pc5.metric("1st Ligation Success",  f"{pmcf_kpis['complete_ligation_rate']}%")
 
-        perf = performance_distribution(pmcf_df)
-        if perf is not None:
-            st.pyplot(plot_performance(perf))
+        # ── 3 KPI charts in one row ──────────────────────────────────────────
+        kpi_c1, kpi_c2, kpi_c3 = st.columns(3)
 
-        bd1, bd2 = st.columns(2)
-        with bd1:
+        perf = performance_distribution(pmcf_df)
+        with kpi_c1:
+            if perf is not None:
+                st.pyplot(plot_performance(perf))
+
+        with kpi_c2:
             if "Followup_Period" in pmcf_df.columns:
                 followup_dist = (
                     pmcf_df["Followup_Period"]
@@ -985,7 +991,7 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
                 )
                 st.pyplot(plot_followup(followup_dist))
 
-        with bd2:
+        with kpi_c3:
             if "Country" in pmcf_df.columns:
                 country_dist = pmcf_df["Country"].dropna().astype(str).value_counts().reset_index()
                 country_dist.columns = ["Country", "Count"]

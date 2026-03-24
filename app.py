@@ -682,14 +682,14 @@ def plot_issue_bar(issue_table: pd.DataFrame):
     n = len(issue_table)
     bar_width = max(0.15, min(0.25, 2.0 / max(n, 1)))
     colors = ["#2196F3", "#4CAF50", "#FF9800", "#F44336", "#AB47BC", "#26C6DA"][:n]
-    fig, ax = plt.subplots(figsize=(4.5, 2.8))
+    fig, ax = plt.subplots(figsize=(3.2, 2.4))
     x = range(n)
     ax.bar(x, issue_table["Count"], width=bar_width, color=colors[:n])
     ax.set_xticks(list(x))
-    ax.set_xticklabels(issue_table["Issue"], rotation=30, ha="right", fontsize=8)
-    ax.set_title("Complaint Issue Frequency", fontsize=10)
-    ax.set_ylabel("Count", fontsize=8)
-    ax.tick_params(axis="y", labelsize=8)
+    ax.set_xticklabels(issue_table["Issue"], rotation=30, ha="right", fontsize=7)
+    ax.set_title("Complaint Issue Frequency", fontsize=9)
+    ax.set_ylabel("Count", fontsize=7)
+    ax.tick_params(axis="y", labelsize=7)
     plt.tight_layout()
     return fig
 
@@ -698,14 +698,14 @@ def plot_pmcf_bar(pmcf_table: pd.DataFrame):
     n = len(pmcf_table)
     bar_width = max(0.15, min(0.25, 2.0 / max(n, 1)))
     colors = ["#4CAF50", "#F44336", "#FF9800"][:n]
-    fig, ax = plt.subplots(figsize=(3.5, 2.8))
+    fig, ax = plt.subplots(figsize=(3.2, 2.4))
     x = range(n)
     ax.bar(x, pmcf_table["Count"], width=bar_width, color=colors[:n])
     ax.set_xticks(list(x))
-    ax.set_xticklabels(pmcf_table["PMCF Assessment"], rotation=0, ha="center", fontsize=8)
-    ax.set_title("PMCF Response Distribution", fontsize=10)
-    ax.set_ylabel("Count", fontsize=8)
-    ax.tick_params(axis="y", labelsize=8)
+    ax.set_xticklabels(pmcf_table["PMCF Assessment"], rotation=0, ha="center", fontsize=7)
+    ax.set_title("PMCF Response Distribution", fontsize=9)
+    ax.set_ylabel("Count", fontsize=7)
+    ax.tick_params(axis="y", labelsize=7)
     plt.tight_layout()
     return fig
 

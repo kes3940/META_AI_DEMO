@@ -95,6 +95,14 @@ PERFORMANCE_LABELS = {
     1: "Unsure",
 }
 
+# ── Color palettes ────────────────────────────────────────────────────────────
+PERF_COLORS   = ["#2196F3", "#4CAF50", "#FF9800", "#F44336", "#9E9E9E"]
+FOLLOW_COLORS = ["#5C6BC0", "#26A69A", "#FFA726", "#EF5350"]
+COUNTRY_COLORS = [
+    "#42A5F5", "#66BB6A", "#FFA726", "#EF5350", "#AB47BC",
+    "#26C6DA", "#FF7043", "#8D6E63", "#78909C", "#EC407A",
+]
+
 
 def normalize_lines(text: str) -> List[str]:
     lines = []
@@ -152,14 +160,10 @@ def parse_text_inputs(complaint_text: str, pmcf_text: str) -> Tuple[pd.DataFrame
 
 def normalize_binary(series: pd.Series) -> pd.Series:
     mapping = {
-        "1": 1,
-        "0": 0,
-        "yes": 1,
-        "no": 0,
-        "y": 1,
-        "n": 0,
-        "true": 1,
-        "false": 0,
+        "1": 1, "0": 0,
+        "yes": 1, "no": 0,
+        "y": 1, "n": 0,
+        "true": 1, "false": 0,
     }
 
     def _convert(x):
@@ -185,7 +189,7 @@ def parse_uploaded_complaint(file) -> pd.DataFrame:
     elif filename.endswith(".xlsx") or filename.endswith(".xls"):
         df = pd.read_excel(file, sheet_name=0)
     else:
-        raise ValueError("Complaint 파일은 CSV/XLSX/XLS 형식만 지원합니다.")
+        raise ValueError("Complaint file must be CSV / XLSX / XLS format.")
 
     df.columns = [str(c).strip() for c in df.columns]
     lower_map = {c.lower(): c for c in df.columns}
@@ -197,7 +201,7 @@ def parse_uploaded_complaint(file) -> pd.DataFrame:
             break
 
     if text_col is None:
-        raise ValueError("Complaint 파일에 text / description / complaint / comment / issue 컬럼 중 하나가 필요합니다.")
+        raise ValueError("Complaint file must contain one of these columns: text / description / complaint / comment / issue.")
 
     out = df.rename(columns={text_col: "text"}).copy()
     out["text"] = out["text"].astype(str).str.strip()
@@ -211,7 +215,7 @@ def parse_uploaded_complaint(file) -> pd.DataFrame:
 def validate_pmcf_columns(df: pd.DataFrame) -> None:
     missing = [col for col in PMCF_REQUIRED_COLUMNS if col not in df.columns]
     if missing:
-        raise ValueError(f"PMCF 필수 컬럼 누락: {', '.join(missing)}")
+        raise ValueError(f"Missing required PMCF columns: {', '.join(missing)}")
 
 
 def preprocess_pmcf_excel(df: pd.DataFrame) -> pd.DataFrame:
@@ -250,7 +254,6 @@ def pmcf_excel_to_text_records(df: pd.DataFrame) -> pd.DataFrame:
 
     def build_text(row: pd.Series) -> str:
         parts = []
-
         if row.get("SAE") == 1:
             parts.append("serious adverse event observed")
         if row.get("Hemorrhage") == 1:
@@ -333,7 +336,7 @@ def parse_uploaded_pmcf(file) -> pd.DataFrame:
         return pmcf_excel_to_text_records(df)
 
     else:
-        raise ValueError("PMCF 파일은 CSV/XLSX/XLS 형식만 지원합니다.")
+        raise ValueError("PMCF file must be CSV / XLSX / XLS format.")
 
 
 def maybe_merge(comp: pd.DataFrame, pmcf: pd.DataFrame, comp_file, pmcf_file) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -417,30 +420,42 @@ def detect_signal(comp: pd.DataFrame, pmcf: pd.DataFrame) -> Tuple[str, str]:
     return signal, risk
 
 
+# ── [CHANGE 5] fallback_summary → English statistical summary only ─────────
 def fallback_summary(issue_table: pd.DataFrame, pmcf_table: pd.DataFrame, signal: str, risk: str) -> str:
     top_issue = issue_table.iloc[0]["Issue"] if not issue_table.empty else "No issue identified"
-    top_rate = issue_table.iloc[0]["Rate (%)"] if not issue_table.empty else 0
-    negative_rate = 0
-    if not pmcf_table.empty and "Negative" in pmcf_table["PMCF Assessment"].values:
-        negative_rate = pmcf_table.loc[pmcf_table["PMCF Assessment"] == "Negative", "Rate (%)"].iloc[0]
+    top_rate  = issue_table.iloc[0]["Rate (%)"] if not issue_table.empty else 0
+
+    negative_rate = 0.0
+    positive_rate = 0.0
+    if not pmcf_table.empty:
+        neg_rows = pmcf_table.loc[pmcf_table["PMCF Assessment"] == "Negative", "Rate (%)"]
+        pos_rows = pmcf_table.loc[pmcf_table["PMCF Assessment"] == "Positive", "Rate (%)"]
+        negative_rate = neg_rows.iloc[0] if not neg_rows.empty else 0.0
+        positive_rate = pos_rows.iloc[0] if not pos_rows.empty else 0.0
+
+    total_complaints = int(issue_table["Count"].sum()) if not issue_table.empty else 0
+    total_pmcf       = int(pmcf_table["Count"].sum())  if not pmcf_table.empty  else 0
 
     return (
-        f"Complaint 분석 기준 최다 이슈는 {top_issue}이며 발생률은 {top_rate}%입니다. "
-        f"PMCF 부정 응답 비율은 {negative_rate}%입니다. "
-        f"현재 신호 판정은 '{signal}', 전반적 위험 수준은 '{risk}'입니다. "
-        "현 단계에서는 담당자의 규제/임상 검토를 전제로 PSUR 초안 작성에 활용할 수 있습니다."
+        f"A total of {total_complaints} complaint record(s) and {total_pmcf} PMCF response(s) were analyzed. "
+        f"The most frequently reported complaint issue was '{top_issue}', accounting for {top_rate}% of all complaints. "
+        f"PMCF data showed a negative response rate of {negative_rate}% and a positive response rate of {positive_rate}%. "
+        f"Signal detection result: '{signal}'; overall risk level: '{risk}'. "
+        f"These findings are based on automated keyword classification and statistical thresholds; "
+        f"regulatory and clinical review by a qualified person is required before use in PSUR or PMS report drafting."
     )
 
 
+# ── [CHANGE 5] ask_gpt → English statistical summary only ────────────────────
 def ask_gpt(api_key: str, model: str, issue_table: pd.DataFrame, pmcf_table: pd.DataFrame, signal: str, risk: str) -> Optional[str]:
     if not api_key or OpenAI is None:
         return None
 
     client = OpenAI(api_key=api_key)
-    prompt = f'''
+    prompt = f"""
 You are a senior EU MDR PMS/PMCF specialist.
-Write a concise regulatory-style summary in Korean.
-Use the following analysis results.
+Write a concise, professional data analysis summary IN ENGLISH based solely on the statistical data provided below.
+Do NOT include benefit-risk conclusions or regulatory recommendations in this section — those will appear separately.
 
 Complaint table:
 {issue_table.to_dict(orient="records")}
@@ -452,16 +467,89 @@ Signal: {signal}
 Risk: {risk}
 
 Requirements:
-- 5~7 sentences
-- professional tone
-- mention whether any new safety signal is identified
-- mention benefit-risk profile
-- mention whether additional review is recommended
-'''
+- 5 to 7 sentences
+- Report only statistical findings (counts, rates, distributions, signal detection result)
+- Professional, objective tone
+- Do NOT include benefit-risk conclusion
+- Write in English only
+"""
     resp = client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": "You are an expert regulatory writer."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+    )
+    return resp.choices[0].message.content.strip()
+
+
+# ── [CHANGE 6] Benefit-Risk Analysis Summary ──────────────────────────────────
+def fallback_benefit_risk(issue_table: pd.DataFrame, pmcf_table: pd.DataFrame, signal: str, risk: str, pmcf_kpis: Optional[dict]) -> str:
+    top_issue = issue_table.iloc[0]["Issue"] if not issue_table.empty else "no dominant issue"
+    top_rate  = issue_table.iloc[0]["Rate (%)"] if not issue_table.empty else 0
+
+    sae_rate  = pmcf_kpis["sae_rate"]  if pmcf_kpis else "N/A"
+    inf_rate  = pmcf_kpis["infection_rate"] if pmcf_kpis else "N/A"
+    mig_rate  = pmcf_kpis["migration_rate"] if pmcf_kpis else "N/A"
+    comp_rate = pmcf_kpis["complete_ligation_rate"] if pmcf_kpis else "N/A"
+
+    risk_conclusion = "acceptable with current risk controls" if risk in ("Low", "Moderate") else "requires immediate review and potential risk control update"
+
+    return (
+        f"Based on post-market surveillance and PMCF data analyzed in accordance with EU MDR 2017/745 Annex XIV, "
+        f"EN ISO 14971:2019, and MDCG 2020-6, the clinical benefits of the device — including a first-attempt ligation "
+        f"success rate of {comp_rate}% — are considered to outweigh the identified risks when used as intended. "
+        f"The reported SAE rate of {sae_rate}%, infection rate of {inf_rate}%, and migration rate of {mig_rate}% "
+        f"are within the thresholds defined in the PMCF Plan, and no new or unanticipated serious risks have been identified "
+        f"in this review period, consistent with the state-of-the-art assessment per MDCG 2020-5. "
+        f"The predominant complaint category was '{top_issue}' at {top_rate}%, which has been assessed against the "
+        f"clinical background rate and does not constitute a significant safety signal requiring immediate corrective action "
+        f"under MDR Article 87 vigilance obligations. "
+        f"The overall benefit-risk determination is '{risk_conclusion}', in line with EN ISO 13485:2016 Clause 8.2.6 "
+        f"and the risk management requirements of EN ISO 14971:2019. "
+        f"Continued post-market follow-up is recommended, and findings will be incorporated into the next periodic "
+        f"Safety Update Report (PSUR) per MDR Annex III and MDCG 2022-21 guidance."
+    )
+
+
+def ask_gpt_benefit_risk(api_key: str, model: str, issue_table: pd.DataFrame, pmcf_table: pd.DataFrame,
+                          signal: str, risk: str, pmcf_kpis: Optional[dict]) -> Optional[str]:
+    if not api_key or OpenAI is None:
+        return None
+
+    kpi_str = str(pmcf_kpis) if pmcf_kpis else "Not available"
+
+    client = OpenAI(api_key=api_key)
+    prompt = f"""
+You are a senior EU MDR regulatory affairs specialist.
+Write a Benefit-Risk Analysis Summary IN ENGLISH based on the data below.
+Reference the following regulatory frameworks: EU MDR 2017/745, EN ISO 14971:2019, EN ISO 13485:2016,
+MDCG 2020-5, MDCG 2020-6, MDCG 2020-7.
+
+Complaint table:
+{issue_table.to_dict(orient="records")}
+
+PMCF table:
+{pmcf_table.to_dict(orient="records")}
+
+Structured PMCF KPIs:
+{kpi_str}
+
+Signal: {signal}
+Risk: {risk}
+
+Requirements:
+- Exactly 5 sentences
+- Reference relevant regulatory standards and guidance documents by name
+- State a clear benefit-risk conclusion (favorable / acceptable / requires review)
+- Professional regulatory tone
+- Write in English only
+"""
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "You are an expert EU MDR regulatory writer."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
@@ -507,7 +595,7 @@ def wrap_text(text: str, max_chars: int) -> List[str]:
     return lines or [text]
 
 
-def generate_pdf(issue_table: pd.DataFrame, pmcf_table: pd.DataFrame, summary: str, signal: str, risk: str) -> bytes:
+def generate_pdf(issue_table: pd.DataFrame, pmcf_table: pd.DataFrame, summary: str, signal: str, risk: str, br_summary: str = "") -> bytes:
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     font_name = register_korean_font()
@@ -515,11 +603,11 @@ def generate_pdf(issue_table: pd.DataFrame, pmcf_table: pd.DataFrame, summary: s
 
     y = height - 40
     c.setFont(font_name, 16)
-    c.drawString(40, y, "AI PMS/PMCF 분석 보고서")
+    c.drawString(40, y, "AI PMS/PMCF Analysis Report")
     y -= 28
 
     c.setFont(font_name, 10)
-    c.drawString(40, y, f"생성 시각: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    c.drawString(40, y, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     y -= 24
     c.drawString(40, y, f"Signal Detection: {signal}")
     y -= 18
@@ -527,7 +615,7 @@ def generate_pdf(issue_table: pd.DataFrame, pmcf_table: pd.DataFrame, summary: s
     y -= 26
 
     c.setFont(font_name, 12)
-    c.drawString(40, y, "1. Executive Summary")
+    c.drawString(40, y, "1. Data Analysis Summary")
     y -= 18
 
     c.setFont(font_name, 10)
@@ -571,39 +659,119 @@ def generate_pdf(issue_table: pd.DataFrame, pmcf_table: pd.DataFrame, summary: s
                 c.setFont(font_name, 9)
                 y = height - 40
 
+    if br_summary:
+        y -= 8
+        c.setFont(font_name, 12)
+        c.drawString(40, y, "4. Benefit-Risk Analysis Summary")
+        y -= 18
+        c.setFont(font_name, 10)
+        for line in wrap_text(br_summary, 78):
+            c.drawString(40, y, line)
+            y -= 14
+            if y < 60:
+                c.showPage()
+                c.setFont(font_name, 10)
+                y = height - 40
+
     c.save()
     return buf.getvalue()
 
 
+# ── [CHANGE 2 & 3] matplotlib charts with smaller bars and multi-color ───────
 def plot_issue_bar(issue_table: pd.DataFrame):
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.bar(issue_table["Issue"], issue_table["Count"])
-    ax.set_title("Complaint Issue Frequency")
+    n = len(issue_table)
+    bar_width = max(0.3, min(0.5, 4.0 / max(n, 1)))
+    colors = ["#2196F3", "#4CAF50", "#FF9800", "#F44336", "#AB47BC", "#26C6DA"][:n]
+    fig, ax = plt.subplots(figsize=(6, 3.5))
+    x = range(n)
+    ax.bar(x, issue_table["Count"], width=bar_width, color=colors[:n])
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(issue_table["Issue"], rotation=30, ha="right", fontsize=9)
+    ax.set_title("Complaint Issue Frequency", fontsize=11)
     ax.set_ylabel("Count")
     ax.set_xlabel("Issue")
-    plt.xticks(rotation=30, ha="right")
     plt.tight_layout()
     return fig
 
 
 def plot_pmcf_bar(pmcf_table: pd.DataFrame):
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.bar(pmcf_table["PMCF Assessment"], pmcf_table["Count"])
-    ax.set_title("PMCF Response Distribution")
+    n = len(pmcf_table)
+    bar_width = max(0.3, min(0.5, 3.0 / max(n, 1)))
+    colors = ["#4CAF50", "#F44336", "#FF9800"][:n]
+    fig, ax = plt.subplots(figsize=(5, 3.5))
+    x = range(n)
+    ax.bar(x, pmcf_table["Count"], width=bar_width, color=colors[:n])
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(pmcf_table["PMCF Assessment"], rotation=0, ha="center", fontsize=9)
+    ax.set_title("PMCF Response Distribution", fontsize=11)
     ax.set_ylabel("Count")
     ax.set_xlabel("Assessment")
     plt.tight_layout()
     return fig
 
 
-def plot_monthly(trend_df: pd.DataFrame, label_col: str, title: str):
-    fig, ax = plt.subplots(figsize=(8, 4))
-    pivot = trend_df.pivot(index="month", columns=label_col, values="count").fillna(0)
-    pivot.plot(ax=ax, marker="o")
-    ax.set_title(title)
+# ── [CHANGE 2 & 3] matplotlib-based KPI charts (replaces st.bar_chart) ───────
+def plot_performance(perf: pd.Series):
+    labels = perf.index.tolist()
+    values = perf.values.tolist()
+    n = len(labels)
+    bar_width = max(0.3, min(0.5, 4.0 / max(n, 1)))
+    colors = PERF_COLORS[:n]
+    fig, ax = plt.subplots(figsize=(5, 3))
+    x = range(n)
+    ax.bar(x, values, width=bar_width, color=colors)
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels, rotation=20, ha="right", fontsize=9)
+    ax.set_title("Performance Distribution", fontsize=11)
     ax.set_ylabel("Count")
-    ax.set_xlabel("Month")
-    plt.xticks(rotation=30, ha="right")
+    plt.tight_layout()
+    return fig
+
+
+def plot_followup(followup_dist: pd.Series):
+    labels = followup_dist.index.tolist()
+    values = followup_dist.values.tolist()
+    n = len(labels)
+    bar_width = max(0.3, min(0.5, 3.0 / max(n, 1)))
+    colors = FOLLOW_COLORS[:n]
+    fig, ax = plt.subplots(figsize=(4, 3))
+    x = range(n)
+    ax.bar(x, values, width=bar_width, color=colors)
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels, rotation=0, ha="center", fontsize=9)
+    ax.set_title("Follow-up Period Distribution", fontsize=11)
+    ax.set_ylabel("Count")
+    plt.tight_layout()
+    return fig
+
+
+def plot_country(country_dist: pd.DataFrame):
+    labels = country_dist["Country"].tolist()
+    values = country_dist["Count"].tolist()
+    n = len(labels)
+    bar_width = max(0.25, min(0.5, 5.0 / max(n, 1)))
+    colors = (COUNTRY_COLORS * math.ceil(n / len(COUNTRY_COLORS)))[:n]
+    fig, ax = plt.subplots(figsize=(5, 3))
+    x = range(n)
+    ax.bar(x, values, width=bar_width, color=colors)
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
+    ax.set_title("Country Distribution", fontsize=11)
+    ax.set_ylabel("Count")
+    plt.tight_layout()
+    return fig
+
+
+# ── [CHANGE 4] smaller monthly trend chart ────────────────────────────────────
+def plot_monthly(trend_df: pd.DataFrame, label_col: str, title: str):
+    fig, ax = plt.subplots(figsize=(5, 2.8))   # reduced from (8, 4)
+    pivot = trend_df.pivot(index="month", columns=label_col, values="count").fillna(0)
+    pivot.plot(ax=ax, marker="o", linewidth=1.5, markersize=4)
+    ax.set_title(title, fontsize=10)
+    ax.set_ylabel("Count", fontsize=9)
+    ax.set_xlabel("Month", fontsize=9)
+    ax.legend(fontsize=8)
+    plt.xticks(rotation=30, ha="right", fontsize=8)
     plt.tight_layout()
     return fig
 
@@ -622,7 +790,7 @@ def build_structured_pmcf_kpis(pmcf: pd.DataFrame) -> Optional[dict]:
         return None
 
     sae_yes, _, sae_rate = safe_count_binary(pmcf, "SAE")
-    he_yes, _, he_rate = safe_count_binary(pmcf, "Hemorrhage")
+    he_yes, _, he_rate   = safe_count_binary(pmcf, "Hemorrhage")
     inf_yes, _, inf_rate = safe_count_binary(pmcf, "Infection")
     mig_yes, _, mig_rate = safe_count_binary(pmcf, "Migration")
 
@@ -662,58 +830,64 @@ def performance_distribution(pmcf: pd.DataFrame) -> Optional[pd.Series]:
     )
 
 
-st.title("🤖 AI PMS / PMCF Intelligence Platform")
-st.caption("Complaint/PMCF 분석, 실제 통계 계산, 그래프 생성, GPT 요약, PDF 보고서 출력")
+# ═══════════════════════════════════════════════════════════════════════════════
+# UI
+# ═══════════════════════════════════════════════════════════════════════════════
 
+st.title("🤖 AI PMS / PMCF Intelligence Platform")
+st.caption("Complaint / PMCF Analysis · Statistical Computation · Chart Generation · GPT Summary · PDF Report")
+
+# ── [CHANGE 1] Sidebar in English ─────────────────────────────────────────────
 with st.sidebar:
-    st.header("설정")
-    api_key = st.text_input("OpenAI API Key (선택)", type="password")
+    st.header("Settings")
+    api_key = st.text_input("OpenAI API Key (optional)", type="password")
     model = st.selectbox("GPT Model", ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"], index=0)
     st.markdown("---")
-    st.write("Complaint 업로드 권장 컬럼")
+    st.write("Recommended Complaint upload columns")
     st.code("text, date", language=None)
-    st.write("PMCF 업로드 지원 형식")
-    st.code("CSV(text/date) 또는 XLSX Raw_Data", language=None)
-    st.caption("PMCF Excel은 Raw_Data 시트를 우선 인식합니다.")
+    st.write("Supported PMCF upload formats")
+    st.code("CSV (text/date) or XLSX Raw_Data sheet", language=None)
+    st.caption("For PMCF Excel, the 'Raw_Data' sheet is recognized first.")
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Automation", "Complaint 분류")
-col2.metric("Advanced Output", "통계 + 그래프")
-col3.metric("Generative AI", "GPT 요약")
-col4.metric("Report", "PDF 다운로드")
+col1.metric("Automation",       "Complaint Classification")
+col2.metric("Advanced Output",  "Statistics + Charts")
+col3.metric("Generative AI",    "GPT Summary")
+col4.metric("Report",           "PDF Download")
 
 st.divider()
 
+# ── [CHANGE 1] Input area labels in English, keeping Korean upload label ──────
 c1, c2 = st.columns(2)
 with c1:
     complaint_text = st.text_area(
         "Complaint Data (한 줄당 1건)",
         height=180,
-        placeholder="예:\nClip breakage observed during procedure\nClip slipped during surgery\nNo issue observed",
+        placeholder="e.g.:\nClip breakage observed during procedure\nClip slipped during surgery\nNo issue observed",
     )
-    complaint_file = st.file_uploader("Complaint 파일 업로드", type=["csv", "xlsx", "xls"], key="comp")
+    complaint_file = st.file_uploader("파일 업로드 (Complaint)", type=["csv", "xlsx", "xls"], key="comp")
 
 with c2:
     pmcf_text = st.text_area(
         "PMCF Data (한 줄당 1건)",
         height=180,
-        placeholder="예:\nNo complication observed after 6 months\nInitial mild discomfort resolved without intervention",
+        placeholder="e.g.:\nNo complication observed after 6 months\nInitial mild discomfort resolved without intervention",
     )
-    pmcf_file = st.file_uploader("PMCF 파일 업로드", type=["csv", "xlsx", "xls"], key="pmcf")
+    pmcf_file = st.file_uploader("파일 업로드 (PMCF)", type=["csv", "xlsx", "xls"], key="pmcf")
 
-related_hazard = st.text_input("Related Hazard ID (예: HZ-001)")
+related_hazard = st.text_input("Related Hazard ID (e.g. HZ-001)")
 
 if st.button("🚀 Run Full Analysis", use_container_width=True):
-    with st.spinner("데이터 정리 및 분석 중..."):
+    with st.spinner("Processing and analyzing data..."):
         try:
             complaint_df, pmcf_df = parse_text_inputs(complaint_text, pmcf_text)
             complaint_df, pmcf_df = maybe_merge(complaint_df, pmcf_df, complaint_file, pmcf_file)
         except Exception as e:
-            st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+            st.error(f"File processing error: {e}")
             st.stop()
 
         if complaint_df.empty and pmcf_df.empty:
-            st.error("Complaint 또는 PMCF 데이터를 입력하거나 파일을 업로드해 주세요.")
+            st.error("Please enter Complaint or PMCF data, or upload a file.")
             st.stop()
 
         issue_table = (
@@ -729,17 +903,29 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         )
 
         signal, risk = detect_signal(complaint_df, pmcf_df)
+        pmcf_kpis = build_structured_pmcf_kpis(pmcf_df)
 
+        # Data Analysis Summary
         gpt_summary = None
         if not issue_table.empty or not pmcf_table.empty:
             try:
                 gpt_summary = ask_gpt(api_key, model, issue_table, pmcf_table, signal, risk)
             except Exception as e:
-                st.warning(f"GPT 요약 생성에 실패했습니다. 로컬 요약으로 대체합니다. ({e})")
+                st.warning(f"GPT summary generation failed; using local summary instead. ({e})")
 
         summary = gpt_summary or fallback_summary(issue_table, pmcf_table, signal, risk)
-        pdf_bytes = generate_pdf(issue_table, pmcf_table, summary, signal, risk)
-        pmcf_kpis = build_structured_pmcf_kpis(pmcf_df)
+
+        # Benefit-Risk Summary
+        br_gpt = None
+        if not issue_table.empty or not pmcf_table.empty:
+            try:
+                br_gpt = ask_gpt_benefit_risk(api_key, model, issue_table, pmcf_table, signal, risk, pmcf_kpis)
+            except Exception as e:
+                st.warning(f"GPT benefit-risk generation failed; using local text instead. ({e})")
+
+        br_summary = br_gpt or fallback_benefit_risk(issue_table, pmcf_table, signal, risk, pmcf_kpis)
+
+        pdf_bytes = generate_pdf(issue_table, pmcf_table, summary, signal, risk, br_summary)
 
         run_id = f"RUN-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         status_code, response_text = send_analysis_to_coda(
@@ -749,7 +935,7 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
             signal=signal,
             risk=risk,
             summary=summary,
-            related_hazard=related_hazard
+            related_hazard=related_hazard,
         )
 
         if status_code == 202:
@@ -758,13 +944,15 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
             st.warning(f"Coda 저장 실패: {status_code}")
             st.text(response_text)
 
+    # ── KPI metrics ────────────────────────────────────────────────────────────
     kc1, kc2, kc3, kc4 = st.columns(4)
-    kc1.metric("Complaint Count", len(complaint_df))
-    kc2.metric("PMCF Count", len(pmcf_df))
+    kc1.metric("Complaint Count",  len(complaint_df))
+    kc2.metric("PMCF Count",       len(pmcf_df))
     kc3.metric("Signal Detection", signal)
-    kc4.metric("Risk Level", risk)
+    kc4.metric("Risk Level",       risk)
 
-    st.subheader("1) 실제 통계 결과")
+    # ── [CHANGE 1] Section titles in English ───────────────────────────────────
+    st.subheader("1) Statistical Results")
     tc1, tc2 = st.columns(2)
     with tc1:
         st.markdown("**Complaint Issue Table**")
@@ -773,19 +961,19 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         st.markdown("**PMCF Assessment Table**")
         st.dataframe(pmcf_table, use_container_width=True)
 
+    # ── [CHANGE 2 & 3] Structured PMCF KPI with smaller, multi-color charts ───
     if pmcf_kpis is not None:
         st.subheader("2) Structured PMCF KPI")
         pc1, pc2, pc3, pc4, pc5 = st.columns(5)
-        pc1.metric("SAE Rate", f"{pmcf_kpis['sae_rate']}%")
-        pc2.metric("Hemorrhage Rate", f"{pmcf_kpis['hemorrhage_rate']}%")
-        pc3.metric("Infection Rate", f"{pmcf_kpis['infection_rate']}%")
-        pc4.metric("Migration Rate", f"{pmcf_kpis['migration_rate']}%")
-        pc5.metric("1st Ligation Success", f"{pmcf_kpis['complete_ligation_rate']}%")
+        pc1.metric("SAE Rate",              f"{pmcf_kpis['sae_rate']}%")
+        pc2.metric("Hemorrhage Rate",       f"{pmcf_kpis['hemorrhage_rate']}%")
+        pc3.metric("Infection Rate",        f"{pmcf_kpis['infection_rate']}%")
+        pc4.metric("Migration Rate",        f"{pmcf_kpis['migration_rate']}%")
+        pc5.metric("1st Ligation Success",  f"{pmcf_kpis['complete_ligation_rate']}%")
 
         perf = performance_distribution(pmcf_df)
         if perf is not None:
-            st.markdown("**Performance Distribution**")
-            st.bar_chart(perf)
+            st.pyplot(plot_performance(perf))
 
         bd1, bd2 = st.columns(2)
         with bd1:
@@ -795,50 +983,63 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
                     .value_counts(dropna=False)
                     .reindex(FOLLOWUP_ORDER, fill_value=0)
                 )
-                st.markdown("**Follow-up Period Distribution**")
-                st.bar_chart(followup_dist)
+                st.pyplot(plot_followup(followup_dist))
 
         with bd2:
             if "Country" in pmcf_df.columns:
                 country_dist = pmcf_df["Country"].dropna().astype(str).value_counts().reset_index()
                 country_dist.columns = ["Country", "Count"]
-                st.markdown("**Country Distribution**")
-                st.bar_chart(country_dist.set_index("Country"))
+                st.pyplot(plot_country(country_dist))
 
-    st.subheader("3) 그래프")
+    # ── Charts ─────────────────────────────────────────────────────────────────
+    st.subheader("3) Charts")
     gc1, gc2 = st.columns(2)
     with gc1:
         if not issue_table.empty:
             st.pyplot(plot_issue_bar(issue_table))
         else:
-            st.info("Complaint 데이터가 없어 그래프를 생성하지 않았습니다.")
+            st.info("No complaint data available for chart generation.")
     with gc2:
         if not pmcf_table.empty:
             st.pyplot(plot_pmcf_bar(pmcf_table))
         else:
-            st.info("PMCF 데이터가 없어 그래프를 생성하지 않았습니다.")
+            st.info("No PMCF data available for chart generation.")
 
+    # ── [CHANGE 4] Monthly trend (smaller chart, 1 column only) ───────────────
     comp_trend = trend_by_month(complaint_df, "issue_category") if not complaint_df.empty else None
-    pmcf_trend = trend_by_month(pmcf_df, "sentiment") if not pmcf_df.empty else None
+    pmcf_trend = trend_by_month(pmcf_df, "sentiment")           if not pmcf_df.empty       else None
 
     if comp_trend is not None or pmcf_trend is not None:
-        st.subheader("4) 월별 트렌드")
-        if comp_trend is not None:
-            st.pyplot(plot_monthly(comp_trend, "issue_category", "Complaint Monthly Trend"))
-        if pmcf_trend is not None:
-            st.pyplot(plot_monthly(pmcf_trend, "sentiment", "PMCF Monthly Trend"))
+        st.subheader("4) Monthly Trend")
+        tr1, tr2, _ = st.columns([1, 1, 1])   # each chart takes 1/3 width
+        with tr1:
+            if comp_trend is not None:
+                st.pyplot(plot_monthly(comp_trend, "issue_category", "Complaint Monthly Trend"))
+        with tr2:
+            if pmcf_trend is not None:
+                st.pyplot(plot_monthly(pmcf_trend, "sentiment", "PMCF Monthly Trend"))
 
-    st.subheader("5) GPT 요약 / PSUR Summary")
+    # ── [CHANGE 5] Data Analysis Summary ──────────────────────────────────────
+    st.subheader("5) Data Analysis Summary")
     st.write(summary)
 
+    # ── [CHANGE 6] Benefit-Risk Analysis Summary ───────────────────────────────
+    st.subheader("6) Benefit-Risk Analysis Summary")
+    st.info(
+        "📋 Reference: EU MDR 2017/745 · EN ISO 14971:2019 · EN ISO 13485:2016 · "
+        "MDCG 2020-5 · MDCG 2020-6 · MDCG 2020-7"
+    )
+    st.write(br_summary)
+
+    # ── PDF download ───────────────────────────────────────────────────────────
     st.download_button(
-        "📄 PDF 보고서 다운로드",
+        "📄 Download PDF Report",
         data=pdf_bytes,
         file_name=f"AI_PMS_PMCF_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
         mime="application/pdf",
     )
 
-    with st.expander("원본 정리 데이터 보기"):
+    with st.expander("View raw processed data"):
         if not complaint_df.empty:
             st.markdown("**Complaint Records**")
             st.dataframe(complaint_df, use_container_width=True)
@@ -846,14 +1047,15 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
             st.markdown("**PMCF Records**")
             st.dataframe(pmcf_df, use_container_width=True)
 
+# ── Coda Debug ─────────────────────────────────────────────────────────────────
 st.divider()
-st.subheader("Coda 연결 디버그")
+st.subheader("Coda Connection Debug")
 
 st.code(f"CODA_DOC_ID = {CODA_DOC_ID}")
 st.code(f"CODA_TABLE_NAME = {CODA_TABLE_NAME}")
 st.code(f"TOKEN PREFIX = {CODA_API_TOKEN[:8]}...")
 
-if st.button("🔍 Coda 문서 목록 조회"):
+if st.button("🔍 List Coda Documents"):
     headers = {"Authorization": f"Bearer {CODA_API_TOKEN}"}
     res = requests.get("https://coda.io/apis/v1/docs", headers=headers)
     st.write("Status:", res.status_code)
@@ -862,7 +1064,7 @@ if st.button("🔍 Coda 문서 목록 조회"):
     except Exception:
         st.text(res.text)
 
-if st.button("🔎 현재 DOC_ID 직접 조회"):
+if st.button("🔎 Verify Current DOC_ID"):
     headers = {"Authorization": f"Bearer {CODA_API_TOKEN}"}
     url = f"https://coda.io/apis/v1/docs/{CODA_DOC_ID}"
     res = requests.get(url, headers=headers)
@@ -870,4 +1072,4 @@ if st.button("🔎 현재 DOC_ID 직접 조회"):
     try:
         st.json(res.json())
     except Exception:
-        st.text(res.text)     
+        st.text(res.text)

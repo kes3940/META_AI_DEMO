@@ -678,7 +678,7 @@ def plot_trend_with_threshold(cat: str, data: dict):
     baseline = data["baseline"]
     threshold= data["threshold"]
     months   = [str(m) for m in rates.index]
-    fig, ax  = plt.subplots(figsize=(3.8, 2.6))
+    fig, ax  = plt.subplots(figsize=(3.2, 2.4))
     ax.plot(months, rates.values * 100, marker="o", markersize=3,
             linewidth=1.5, color="#2196F3", label="Observed")
     ax.plot(months, baseline.values * 100, linestyle="--", linewidth=1,
@@ -698,7 +698,7 @@ def plot_trend_with_threshold(cat: str, data: dict):
 
 
 def plot_monthly(trend_df, label_col, title):
-    fig, ax = plt.subplots(figsize=(3.8, 2.6))
+    fig, ax = plt.subplots(figsize=(3.2, 2.4))
     pivot   = trend_df.pivot(index="month", columns=label_col, values="count").fillna(0)
     pivot.plot(ax=ax, marker="o", linewidth=1.5, markersize=4)
     ax.set_title(title, fontsize=9)
@@ -844,15 +844,15 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         st.markdown("**PMCF Assessment Table**")
         st.dataframe(pmcf_table, use_container_width=True)
 
-    # [3] Row 2: charts aligned below tables
-    g1, g2 = st.columns(2)
+    # [3] Row 2: charts aligned below tables — 4-col layout (same as section 2)
+    g1, g2, g3, g4 = st.columns(4)
     with g1:
         if not issue_table.empty:
             st.pyplot(plot_issue_bar(issue_table))
         else:
             st.info("No complaint data for chart.")
     with g2:
-        # [8] PMCF Response Distribution removed from section 3 — shown here instead
+        # [8] PMCF Response Distribution shown here
         if not pmcf_table.empty:
             st.pyplot(plot_pmcf_bar(pmcf_table))
         else:
@@ -1015,7 +1015,7 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         months_all = sorted(set(m for s in trend_dict.values() for m in s.index))
         months_str = [str(m) for m in months_all]
         colors_iter = iter(MULTI_COLORS)
-        fig, ax = plt.subplots(figsize=(3.8, 2.6))
+        fig, ax = plt.subplots(figsize=(3.2, 2.4))
         breach = False
         for col, series in trend_dict.items():
             vals = [series.get(m, float("nan")) for m in months_all]
@@ -1035,25 +1035,25 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         plt.tight_layout()
         return fig, breach
 
-    trd1, trd2 = st.columns(2)
+    trd1, trd2, trd3, trd4 = st.columns(4)
     safety_breach      = False
     performance_breach = False
 
     with trd1:
-        st.markdown("**Safety Trend** — SAE / Hemorrhage / Infection / Migration")
+        st.markdown("**Safety Trend**")
         if safety_trend:
             result = plot_pmcf_trend_group(safety_trend, SAFETY_THRESHOLD,
                                            "Clinical Safety Events Trend")
             if result:
                 fig_s, safety_breach = result
                 st.pyplot(fig_s)
-                st.caption(f"Threshold: {SAFETY_THRESHOLD}% per event type | "
-                           f"Breach: {'⚠️ YES' if safety_breach else '✅ NO'}")
+                st.caption(f"Threshold: {SAFETY_THRESHOLD}% | "
+                           f"{'⚠️ Breach' if safety_breach else '✅ OK'}")
         else:
-            st.info("No date column (Surgery_Date / Followup_Date) found in PMCF data for trend analysis.")
+            st.info("No date column found in PMCF data.")
 
     with trd2:
-        st.markdown("**Performance Trend** — Ligation Result / Misfiring / Slippage")
+        st.markdown("**Performance Trend**")
         perf_trend_combined = {}
         if performance_trend:
             perf_trend_combined.update(performance_trend)
@@ -1065,11 +1065,10 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
             if result:
                 fig_p, performance_breach = result
                 st.pyplot(fig_p)
-                st.caption(f"Threshold: Misfiring/Slippage {PERFORMANCE_THRESHOLD}%, "
-                           f"Ligation fail {LIGATION_THRESHOLD}% | "
-                           f"Breach: {'⚠️ YES' if performance_breach else '✅ NO'}")
+                st.caption(f"Threshold: {PERFORMANCE_THRESHOLD}% | "
+                           f"{'⚠️ Breach' if performance_breach else '✅ OK'}")
         else:
-            st.info("No date column found in PMCF data for performance trend analysis.")
+            st.info("No date column found in PMCF data.")
 
     # Threshold summary table for PMCF trends
     if safety_trend or perf_trend_combined:
@@ -1181,3 +1180,4 @@ if st.button("🔎 Verify Current DOC_ID"):
     st.write("Status:", r.status_code)
     try:    st.json(r.json())
     except: st.text(r.text)
+

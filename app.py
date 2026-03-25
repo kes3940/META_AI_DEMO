@@ -1,4 +1,4 @@
-import io
+t io
 import math
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -1133,13 +1133,13 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
     # ─────────────────────────────────────────────────────────────────────────
     # 5) Data Analysis Summary
     # ─────────────────────────────────────────────────────────────────────────
-    st.subheader("5) Data Analysis Summary")
+    st.subheader("5. Data Analysis Summary")
     st.write(summary)
 
     # ─────────────────────────────────────────────────────────────────────────
     # 6) Benefit-Risk Analysis Summary
     # ─────────────────────────────────────────────────────────────────────────
-    st.subheader("6) Benefit-Risk Analysis Summary")
+    st.subheader("6. Benefit-Risk Analysis Summary")
     st.info(
         "📋 Reference: EU MDR 2017/745 · EN ISO 14971:2019 · EN ISO 13485:2016 · "
         "MDCG 2020-5 · MDCG 2020-6 · MDCG 2020-7"
@@ -1180,4 +1180,3 @@ if st.button("🔎 Verify Current DOC_ID"):
     st.write("Status:", r.status_code)
     try:    st.json(r.json())
     except: st.text(r.text)
-

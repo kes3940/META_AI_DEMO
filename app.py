@@ -809,17 +809,33 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         else:
             st.warning(f"Coda 저장 실패: {sc}"); st.text(rt)
 
-    # ── Top KPIs ──────────────────────────────────────────────────────────────
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Complaint Count",  len(complaint_df))
-    k2.metric("PMCF Count",       len(pmcf_df))
-    k3.metric("Signal Detection", signal)
-    k4.metric("Risk Level",       risk)
+    # ── [1] KPI summary table (enlarged label font via markdown) ──────────────
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    kpi_df = pd.DataFrame({
+        "Metric": ["Complaint Count", "PMCF Count", "Signal Detection", "Risk Level"],
+        "Value":  [len(complaint_df), len(pmcf_df), signal, risk],
+    })
+    st.markdown(
+        kpi_df.style
+        .set_properties(**{"font-size": "16px", "font-weight": "bold", "text-align": "center"})
+        .set_table_styles([
+            {"selector": "th", "props": [("font-size", "18px"), ("font-weight", "bold"),
+                                          ("text-align", "center"), ("padding", "8px 16px")]},
+            {"selector": "td", "props": [("font-size", "16px"), ("padding", "8px 16px"),
+                                          ("text-align", "center")]},
+        ])
+        .hide(axis="index")
+        .to_html(),
+        unsafe_allow_html=True,
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 1) Summary Table
+    # [2] 1. Summary
     # ─────────────────────────────────────────────────────────────────────────
-    st.subheader("1) Summary Table")
+    st.subheader("1. Summary")
+
+    # Row 1: tables
     t1, t2 = st.columns(2)
     with t1:
         st.markdown("**Complaint Issue Table**")
@@ -828,10 +844,24 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         st.markdown("**PMCF Assessment Table**")
         st.dataframe(pmcf_table, use_container_width=True)
 
+    # [3] Row 2: charts aligned below tables
+    g1, g2 = st.columns(2)
+    with g1:
+        if not issue_table.empty:
+            st.pyplot(plot_issue_bar(issue_table))
+        else:
+            st.info("No complaint data for chart.")
+    with g2:
+        # [8] PMCF Response Distribution removed from section 3 — shown here instead
+        if not pmcf_table.empty:
+            st.pyplot(plot_pmcf_bar(pmcf_table))
+        else:
+            st.info("No PMCF data for chart.")
+
     # ─────────────────────────────────────────────────────────────────────────
-    # 2) PMCF Survey Statistics
+    # [4] 2. PMCF Survey Statistics
     # ─────────────────────────────────────────────────────────────────────────
-    st.subheader("2) PMCF Survey Statistics")
+    st.subheader("2. PMCF Survey Statistics")
 
     if pmcf_kpis is not None:
         m1, m2, m3, m4, m5 = st.columns(5)
@@ -841,7 +871,7 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         m4.metric("Migration Rate",       f"{pmcf_kpis['migration_rate']}%")
         m5.metric("1st Ligation Success", f"{pmcf_kpis['complete_ligation_rate']}%")
 
-    # Row A: Follow-up / Procedure Type / Performance Rating / Country
+    # [5A] Row A: Usage-related — Follow-up Period / Procedure Type / Clip Size Distribution
     ra1, ra2, ra3, ra4 = st.columns(4)
     with ra1:
         if "Followup_Period" in pmcf_df.columns:
@@ -851,30 +881,48 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         fig = plot_categorical(pmcf_df, "Procedure_Type", "Procedure Type")
         if fig: st.pyplot(fig)
     with ra3:
-        perf = performance_distribution(pmcf_df)
-        if perf is not None: st.pyplot(plot_performance(perf))
-    with ra4:
-        if "Country" in pmcf_df.columns:
-            cd = pmcf_df["Country"].dropna().astype(str).value_counts().reset_index()
-            cd.columns = ["Country","Count"]
-            st.pyplot(plot_country(cd))
+        # Clip_Size: look for common column name variants
+        clip_col = next((c for c in pmcf_df.columns
+                         if c.lower().replace(" ","_") in ["clip_size","clip_size_distribution",
+                                                            "clipsize","size"]), None)
+        if clip_col:
+            fig = plot_categorical(pmcf_df, clip_col, "Clip Size Distribution")
+            if fig: st.pyplot(fig)
 
-    # Row B: Clinical Safety Events grouped / Misfiring / Slippage / Ligation Result
+    # [5B] Row B: Clinical Safety Events / Ligation Result / Misfiring and Slippage (combined)
     rb1, rb2, rb3, rb4 = st.columns(4)
     with rb1:
         fig = plot_binary_grouped(pmcf_df)
         if fig: st.pyplot(fig)
     with rb2:
-        fig = plot_binary_single(pmcf_df, "Misfiring", "Misfiring")
-        if fig: st.pyplot(fig)
-    with rb3:
-        fig = plot_binary_single(pmcf_df, "Slippage", "Slippage")
-        if fig: st.pyplot(fig)
-    with rb4:
         fig = plot_categorical(pmcf_df, "Ligation_Result", "Ligation Result")
         if fig: st.pyplot(fig)
+    with rb3:
+        # Combined Misfiring + Slippage grouped bar
+        mis_slip_cols = [c for c in ["Misfiring","Slippage"] if c in pmcf_df.columns]
+        if mis_slip_cols:
+            yes_vals_ms = []
+            no_vals_ms  = []
+            for c in mis_slip_cols:
+                s = pmcf_df[c].dropna()
+                yes_vals_ms.append(int((s == 1).sum()))
+                no_vals_ms.append( int((s == 0).sum()))
+            n_ms = len(mis_slip_cols)
+            x_ms = np.arange(n_ms)
+            bw_ms = 0.28
+            fig_ms, ax_ms = plt.subplots(figsize=(3.2, 2.4))
+            ax_ms.bar(x_ms - bw_ms/2, yes_vals_ms, width=bw_ms, color="#F44336", label="Yes")
+            ax_ms.bar(x_ms + bw_ms/2, no_vals_ms,  width=bw_ms, color="#4CAF50", label="No")
+            ax_ms.set_xticks(x_ms)
+            ax_ms.set_xticklabels(mis_slip_cols, fontsize=7)
+            ax_ms.set_title("Misfiring and Slippage", fontsize=9)
+            ax_ms.set_ylabel("Count", fontsize=7)
+            ax_ms.tick_params(axis="y", labelsize=7)
+            ax_ms.legend(fontsize=6, loc="upper right")
+            plt.tight_layout()
+            st.pyplot(fig_ms)
 
-    # Row C: Intended Purpose / Benefit-Risk
+    # [5C] Row C: Overall clinical evaluation — Intended Purpose / Benefit-Risk Assessment
     rc1, rc2, rc3, rc4 = st.columns(4)
     with rc1:
         fig = plot_categorical(pmcf_df, "Intended_Purpose", "Intended Purpose")
@@ -884,21 +932,16 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         if fig: st.pyplot(fig)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 3) Complaint Statistics
+    # [6][7][8] 3. Complaint Statistics  (same chart size as section 2; PMCF bar removed)
     # ─────────────────────────────────────────────────────────────────────────
-    st.subheader("3) Complaint Statistics")
-    cs1, cs2, cs3 = st.columns(3)
+    st.subheader("3. Complaint Statistics")
+    cs1, cs2, cs3 = st.columns(4)[:3]   # use 3 of 4 columns → same proportional width
     with cs1:
         if not issue_table.empty:
             st.pyplot(plot_issue_bar(issue_table))
         else:
             st.info("No complaint data for chart.")
     with cs2:
-        if not pmcf_table.empty:
-            st.pyplot(plot_pmcf_bar(pmcf_table))
-        else:
-            st.info("No PMCF data for chart.")
-    with cs3:
         fig = plot_complaint_monthly(complaint_df)
         if fig:
             st.pyplot(fig)
@@ -906,96 +949,186 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
             st.info("No date column available for monthly occurrence chart.")
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 4) Trend Analysis  (ISO/TR 20416 + MDCG 2020-5 + MDR Art. 88)
+    # [9] 4. Trend Analysis  — Safety + Performance trends only
     # ─────────────────────────────────────────────────────────────────────────
-    st.subheader("4) Trend Analysis")
+    st.subheader("4. Trend Analysis")
     st.caption(
         f"📐 Reference: ISO/TR 20416:2020 · MDCG 2020-5 · EU MDR 2017/745 Article 88  |  "
-        f"Baseline = {TREND_BASELINE_WINDOW}-month rolling average of observed rates  |  "
-        f"Thresholds per complaint issue category (Breakage/Migration/Slip: 8%, "
-        f"Inflammation/Pain: 10%, Other: 15%)"
+        f"Baseline = {TREND_BASELINE_WINDOW}-month rolling average  |  "
+        f"Safety threshold: SAE/Hemorrhage/Infection/Migration ≥ 5% · "
+        f"Performance threshold: Misfiring/Slippage ≥ 8%, Ligation fail ≥ 5%"
     )
 
-    trend_result = compute_trend_analysis(complaint_df)
-
-    if trend_result is not None:
-        per_issue = trend_result["per_issue"]
-        cats      = list(per_issue.keys())
-
-        # Charts — 4 per row
-        for i in range(0, len(cats), 4):
-            row_cols = st.columns(4)
-            for j, cat in enumerate(cats[i:i+4]):
-                with row_cols[j]:
-                    st.pyplot(plot_trend_with_threshold(cat, per_issue[cat]))
-                    d = per_issue[cat]
-                    st.caption(
-                        f"Latest **{d['latest_rate']}%** | "
-                        f"Baseline {d['baseline_rate']}% | "
-                        f"Threshold {d['threshold_pct']}%"
-                    )
-
-        # Summary table
-        st.markdown("**Threshold Compliance Summary**")
-        summary_rows = [
-            {"Issue Category":   cat,
-             "Latest Rate (%)":  d["latest_rate"],
-             "Baseline (%)":     d["baseline_rate"],
-             "Threshold (%)":    d["threshold_pct"],
-             "Threshold Breach": "⚠️ YES" if d["breach"] else "✅ NO"}
-            for cat, d in per_issue.items()
-        ]
-        st.dataframe(pd.DataFrame(summary_rows), use_container_width=True)
-
-        # ── MDR Article 88 notification ──────────────────────────────────────
-        st.markdown("---")
-        st.markdown("#### 📋 MDR Article 88 — Trend Reporting Assessment")
-        if trend_result["trend_report_required"]:
-            st.error(
-                "⚠️ **Trend Reporting to Competent Authority Required**\n\n"
-                "One or more complaint issue categories have exceeded the pre-defined statistical threshold "
-                "established in the PMS Plan (per ISO/TR 20416:2020 and MDCG 2020-5 §4.3).\n\n"
-                "Under **EU MDR 2017/745 Article 88**, the manufacturer must report this statistically "
-                "significant increase in the frequency of serious incidents or expected undesirable side-effects "
-                "to the relevant Competent Authority without undue delay.\n\n"
-                "**Required actions:**\n"
-                "- Submit a Trend Report via EUDAMED (or national portal if EUDAMED is unavailable).\n"
-                "- Initiate root-cause investigation and assess whether a Field Safety Corrective Action (FSCA) "
-                "or Field Safety Notice (FSN) is required under MDR Article 89.\n"
-                "- Review and update Risk Management File (EN ISO 14971:2019) if new risks are identified.\n"
-                "- Document all findings in the PMS Report / PSUR per MDR Annex III and MDCG 2022-21.\n"
-                "- Notify the Notified Body if the trend affects conformity with the General Safety and "
-                "Performance Requirements (GSPRs) per MDR Annex I."
+    # ── Safety trend: SAE / Hemorrhage / Infection / Migration monthly rates ──
+    def compute_pmcf_binary_trend(pmcf: pd.DataFrame, cols: List[str]) -> Optional[dict]:
+        """Monthly Yes-rate for a list of binary columns in the PMCF dataframe."""
+        date_col = next((c for c in ["Surgery_Date","Followup_Date","Completion_Date","date"]
+                         if c in pmcf.columns), None)
+        if date_col is None:
+            return None
+        tmp = pmcf.copy()
+        tmp["_date"] = pd.to_datetime(tmp[date_col], errors="coerce")
+        tmp = tmp.dropna(subset=["_date"])
+        if tmp.empty:
+            return None
+        tmp["month"] = tmp["_date"].dt.to_period("M")
+        result = {}
+        for col in cols:
+            if col not in tmp.columns:
+                continue
+            monthly = tmp.groupby("month")[col].apply(
+                lambda s: round(s.dropna().astype(float).mean() * 100, 1)
+                if s.dropna().shape[0] > 0 else float("nan")
             )
+            result[col] = monthly
+        return result if result else None
+
+    safety_cols      = ["SAE","Hemorrhage","Infection","Migration"]
+    performance_cols = ["Misfiring","Slippage"]
+
+    safety_trend      = compute_pmcf_binary_trend(pmcf_df, safety_cols)
+    performance_trend = compute_pmcf_binary_trend(pmcf_df, performance_cols)
+
+    # Also compute Ligation fail rate trend
+    ligation_trend = None
+    date_col_lig = next((c for c in ["Surgery_Date","Followup_Date","Completion_Date","date"]
+                         if c in pmcf_df.columns), None)
+    if date_col_lig and "Ligation_Result" in pmcf_df.columns:
+        tmp_lig = pmcf_df.copy()
+        tmp_lig["_date"] = pd.to_datetime(tmp_lig[date_col_lig], errors="coerce")
+        tmp_lig = tmp_lig.dropna(subset=["_date"])
+        if not tmp_lig.empty:
+            tmp_lig["month"] = tmp_lig["_date"].dt.to_period("M")
+            lig_monthly = tmp_lig.groupby("month")["Ligation_Result"].apply(
+                lambda s: round((s.str.strip().str.lower() == "fail").sum() / max(s.shape[0],1) * 100, 1)
+            )
+            ligation_trend = {"Ligation_Fail": lig_monthly}
+
+    SAFETY_THRESHOLD     = 5.0   # % — trigger for individual safety event
+    PERFORMANCE_THRESHOLD= 8.0   # % — misfiring/slippage
+    LIGATION_THRESHOLD   = 5.0   # % — ligation failure
+
+    def plot_pmcf_trend_group(trend_dict: dict, threshold_pct: float, title: str):
+        """Line chart for a group of PMCF binary monthly rates."""
+        if not trend_dict:
+            return None
+        months_all = sorted(set(m for s in trend_dict.values() for m in s.index))
+        months_str = [str(m) for m in months_all]
+        colors_iter = iter(MULTI_COLORS)
+        fig, ax = plt.subplots(figsize=(3.8, 2.6))
+        breach = False
+        for col, series in trend_dict.items():
+            vals = [series.get(m, float("nan")) for m in months_all]
+            color = next(colors_iter, "#9E9E9E")
+            ax.plot(months_str, vals, marker="o", markersize=3, linewidth=1.5,
+                    color=color, label=col)
+            if any(v >= threshold_pct for v in vals if not math.isnan(v)):
+                breach = True
+        ax.axhline(threshold_pct, color="#F44336", linewidth=1, linestyle=":",
+                   label=f"Threshold ({threshold_pct:.0f}%)")
+        ax.set_title(title, fontsize=9)
+        ax.set_ylabel("Rate (%)", fontsize=7)
+        ax.tick_params(axis="y", labelsize=7)
+        ax.set_xticks(range(len(months_str)))
+        ax.set_xticklabels(months_str, rotation=30, ha="right", fontsize=6)
+        ax.legend(fontsize=6, loc="upper left")
+        plt.tight_layout()
+        return fig, breach
+
+    trd1, trd2 = st.columns(2)
+    safety_breach      = False
+    performance_breach = False
+
+    with trd1:
+        st.markdown("**Safety Trend** — SAE / Hemorrhage / Infection / Migration")
+        if safety_trend:
+            result = plot_pmcf_trend_group(safety_trend, SAFETY_THRESHOLD,
+                                           "Clinical Safety Events Trend")
+            if result:
+                fig_s, safety_breach = result
+                st.pyplot(fig_s)
+                st.caption(f"Threshold: {SAFETY_THRESHOLD}% per event type | "
+                           f"Breach: {'⚠️ YES' if safety_breach else '✅ NO'}")
         else:
-            st.success(
-                "✅ **No Trend Reporting Required at This Time**\n\n"
-                "All complaint issue categories remain within the pre-defined statistical thresholds. "
-                "No statutory trend notification under **EU MDR 2017/745 Article 88** is currently triggered.\n\n"
-                "**Ongoing surveillance obligations:**\n"
-                "- Continue monthly monitoring in the next PMS cycle per ISO/TR 20416:2020.\n"
-                "- Re-evaluate threshold values annually as part of the PMS Plan / PMCF Plan update "
-                "(MDCG 2020-7 §3.4).\n"
-                "- Confirm that no serious incidents individually meeting MDR Article 87 vigilance criteria "
-                "have been overlooked.\n"
-                "- Document this trend assessment conclusion in the PMS Report / PSUR per MDR Annex III."
-            )
+            st.info("No date column (Surgery_Date / Followup_Date) found in PMCF data for trend analysis.")
+
+    with trd2:
+        st.markdown("**Performance Trend** — Ligation Result / Misfiring / Slippage")
+        perf_trend_combined = {}
+        if performance_trend:
+            perf_trend_combined.update(performance_trend)
+        if ligation_trend:
+            perf_trend_combined.update(ligation_trend)
+        if perf_trend_combined:
+            result = plot_pmcf_trend_group(perf_trend_combined, PERFORMANCE_THRESHOLD,
+                                           "Device Performance Trend")
+            if result:
+                fig_p, performance_breach = result
+                st.pyplot(fig_p)
+                st.caption(f"Threshold: Misfiring/Slippage {PERFORMANCE_THRESHOLD}%, "
+                           f"Ligation fail {LIGATION_THRESHOLD}% | "
+                           f"Breach: {'⚠️ YES' if performance_breach else '✅ NO'}")
+        else:
+            st.info("No date column found in PMCF data for performance trend analysis.")
+
+    # Threshold summary table for PMCF trends
+    if safety_trend or perf_trend_combined:
+        trend_summary_rows = []
+        if safety_trend:
+            for col, series in safety_trend.items():
+                latest = series.iloc[-1] if len(series) > 0 else float("nan")
+                trend_summary_rows.append({
+                    "Category": "Safety",
+                    "Indicator": col,
+                    "Latest Rate (%)": round(latest, 1) if not math.isnan(latest) else "N/A",
+                    "Threshold (%)": SAFETY_THRESHOLD,
+                    "Breach": "⚠️ YES" if not math.isnan(latest) and latest >= SAFETY_THRESHOLD else "✅ NO",
+                })
+        if perf_trend_combined:
+            for col, series in perf_trend_combined.items():
+                latest  = series.iloc[-1] if len(series) > 0 else float("nan")
+                thresh  = LIGATION_THRESHOLD if col == "Ligation_Fail" else PERFORMANCE_THRESHOLD
+                trend_summary_rows.append({
+                    "Category": "Performance",
+                    "Indicator": col,
+                    "Latest Rate (%)": round(latest, 1) if not math.isnan(latest) else "N/A",
+                    "Threshold (%)": thresh,
+                    "Breach": "⚠️ YES" if not math.isnan(latest) and latest >= thresh else "✅ NO",
+                })
+        if trend_summary_rows:
+            st.markdown("**Threshold Compliance Summary**")
+            st.dataframe(pd.DataFrame(trend_summary_rows), use_container_width=True)
+
+    # MDR Article 88 notification
+    st.markdown("---")
+    st.markdown("#### 📋 MDR Article 88 — Trend Reporting Assessment")
+    any_breach = safety_breach or performance_breach
+    if any_breach:
+        st.error(
+            "⚠️ **Trend Reporting to Competent Authority Required**\n\n"
+            "One or more PMCF indicators (safety or performance) have exceeded the pre-defined "
+            "statistical threshold established in the PMS Plan "
+            "(per ISO/TR 20416:2020 and MDCG 2020-5 §4.3).\n\n"
+            "Under **EU MDR 2017/745 Article 88**, the manufacturer must report this statistically "
+            "significant increase in the frequency of serious incidents or expected undesirable "
+            "side-effects to the relevant Competent Authority without undue delay.\n\n"
+            "**Required actions:**\n"
+            "- Submit a Trend Report via EUDAMED (or national portal if EUDAMED is unavailable).\n"
+            "- Initiate root-cause investigation; assess whether FSCA / FSN is required (MDR Art. 89).\n"
+            "- Review and update Risk Management File (EN ISO 14971:2019) if new risks are identified.\n"
+            "- Document findings in PMS Report / PSUR per MDR Annex III and MDCG 2022-21.\n"
+            "- Notify the Notified Body if conformity with GSPRs (MDR Annex I) is affected."
+        )
     else:
-        # Fallback when no complaint date data: show basic monthly line charts
-        comp_trend = trend_by_month(complaint_df, "issue_category") if not complaint_df.empty else None
-        pmcf_trend = trend_by_month(pmcf_df, "sentiment")           if not pmcf_df.empty       else None
-        if comp_trend is not None or pmcf_trend is not None:
-            tr1, tr2, _ = st.columns([1, 1, 1])
-            with tr1:
-                if comp_trend is not None:
-                    st.pyplot(plot_monthly(comp_trend, "issue_category", "Complaint Monthly Trend"))
-            with tr2:
-                if pmcf_trend is not None:
-                    st.pyplot(plot_monthly(pmcf_trend, "sentiment", "PMCF Monthly Trend"))
-        st.info(
-            "ℹ️ Threshold-based trend analysis (ISO/TR 20416 + MDR Art. 88) requires a **date** column "
-            "in the Complaint upload file. Please upload a complaint file with date information to enable "
-            "full trend analysis and automated MDR Article 88 reporting assessment."
+        st.success(
+            "✅ **No Trend Reporting Required at This Time**\n\n"
+            "All safety and performance indicators remain within the pre-defined thresholds. "
+            "No statutory trend notification under **EU MDR 2017/745 Article 88** is currently triggered.\n\n"
+            "**Ongoing surveillance obligations:**\n"
+            "- Continue monitoring in the next PMS cycle per ISO/TR 20416:2020.\n"
+            "- Re-evaluate threshold values annually (MDCG 2020-7 §3.4).\n"
+            "- Confirm no individual incidents meeting MDR Article 87 vigilance criteria are overlooked.\n"
+            "- Document this assessment in the PMS Report / PSUR per MDR Annex III."
         )
 
     # ─────────────────────────────────────────────────────────────────────────

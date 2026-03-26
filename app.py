@@ -797,228 +797,6 @@ def plot_monthly(trend_df, label_col, title):
     return fig
 
 
-def render_section_separator():
-    st.markdown('<div style="height: 0.85rem;"></div>', unsafe_allow_html=True)
-    st.markdown('<hr style="border:0; border-top:1px solid #E5E7EB; margin:0;">', unsafe_allow_html=True)
-    st.markdown('<div style="height: 0.85rem;"></div>', unsafe_allow_html=True)
-
-
-
-def render_subsection_spacer():
-    st.markdown('<div style="height: 0.85rem;"></div>', unsafe_allow_html=True)
-
-
-
-def render_styled_table(df: pd.DataFrame, hide_index: bool = True):
-    if df is None or df.empty:
-        st.info("No data available.")
-        return
-    styler = (
-        df.style
-        .format(na_rep="-")
-        .set_properties(**{
-            "font-size": "13px",
-            "text-align": "center",
-            "padding": "6px 10px",
-        })
-        .set_table_styles([
-            {"selector": "table", "props": [("width", "100%"), ("border-collapse", "collapse")]},
-            {"selector": "th", "props": [
-                ("font-size", "13px"),
-                ("font-weight", "bold"),
-                ("text-align", "center"),
-                ("background-color", "#F6F8FA"),
-                ("padding", "6px 10px"),
-                ("border", "1px solid #D0D7DE"),
-            ]},
-            {"selector": "td", "props": [
-                ("font-size", "13px"),
-                ("text-align", "center"),
-                ("padding", "6px 10px"),
-                ("border", "1px solid #D0D7DE"),
-            ]},
-        ])
-    )
-    if hide_index:
-        styler = styler.hide(axis="index")
-    st.markdown(styler.to_html(), unsafe_allow_html=True)
-
-
-
-def clean_string_series(series: pd.Series) -> pd.Series:
-    s = series.dropna().astype(str).str.strip()
-    return s[s.str.lower().isin(["nan", "none", "", "<na>"]) == False]
-
-
-
-def build_categorical_distribution_table(df: pd.DataFrame, specs: List[Tuple[str, str, str]]) -> pd.DataFrame:
-    rows = []
-    for area, label, col in specs:
-        if col not in df.columns:
-            continue
-        valid = clean_string_series(df[col])
-        denom = int(valid.shape[0])
-        if denom == 0:
-            continue
-        for response, count in valid.value_counts().items():
-            rows.append({
-                "Area": area,
-                "Variable": label,
-                "Response": response,
-                "Count": int(count),
-                "Rate (%)": round(count / denom * 100, 1),
-            })
-    return pd.DataFrame(rows)
-
-
-
-def binary_yes_no_stats(df: pd.DataFrame, col: str, mode: str = "binary") -> Tuple[int, int, int, float]:
-    if col not in df.columns:
-        return 0, 0, 0, 0.0
-
-    if mode == "binary":
-        valid = normalize_binary(df[col]).dropna()
-        denom = int(valid.shape[0])
-        yes = int((valid == 1).sum())
-    elif mode == "ligation_complete":
-        valid = clean_string_series(df[col]).str.lower()
-        denom = int(valid.shape[0])
-        yes = int(valid.str.contains("complete", na=False).sum())
-    elif mode == "performance_positive":
-        numeric = pd.to_numeric(df[col], errors="coerce").dropna()
-        denom = int(numeric.shape[0])
-        yes = int((numeric >= 4).sum())
-    else:
-        return 0, 0, 0, 0.0
-
-    no = max(denom - yes, 0)
-    rate = round(yes / denom * 100, 1) if denom else 0.0
-    return yes, no, denom, rate
-
-
-
-def resolve_performance_spec(df: pd.DataFrame) -> Optional[dict]:
-    if "Performance" in df.columns:
-        return {"label": "Performance", "col": "Performance", "mode": "binary", "derived": False}
-    if "Performance_Rating" in df.columns:
-        return {
-            "label": "Performance",
-            "col": "Performance_Rating",
-            "mode": "performance_positive",
-            "derived": True,
-        }
-    return None
-
-
-
-def build_binary_rate_table(df: pd.DataFrame, specs: List[Tuple[str, str, str]]) -> pd.DataFrame:
-    rows = []
-    for label, col, mode in specs:
-        yes, _, denom, rate = binary_yes_no_stats(df, col, mode)
-        if denom == 0:
-            continue
-        rows.append({
-            "Indicator": label,
-            "Yes (n)": yes,
-            "Sample (n)": denom,
-            "Rate (%)": rate,
-        })
-    return pd.DataFrame(rows)
-
-
-
-def plot_yearly_yes_no_combo(pmcf: pd.DataFrame, col: str, title: str,
-                             year_list: List[str], mode: str = "binary"):
-    if not year_list or col not in pmcf.columns:
-        return None
-
-    yes_vals, no_vals, rates = [], [], []
-    for yr in year_list:
-        subset = pmcf[pmcf["__year"] == yr]
-        yes, no, denom, rate = binary_yes_no_stats(subset, col, mode)
-        yes_vals.append(yes)
-        no_vals.append(no)
-        rates.append(rate if denom else np.nan)
-
-    if not any(v > 0 for v in yes_vals + no_vals):
-        return None
-
-    x = np.arange(len(year_list))
-    bw = max(0.18, min(0.28, 1.6 / max(len(year_list), 1)))
-    fig, ax1 = plt.subplots(figsize=(3.2, 2.4))
-    ax1.bar(x - bw / 2, yes_vals, width=bw, color="#F44336", label="Yes")
-    ax1.bar(x + bw / 2, no_vals, width=bw, color="#4CAF50", label="No")
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(year_list, fontsize=7)
-    ax1.set_title(title, fontsize=9)
-    ax1.set_ylabel("Count", fontsize=7)
-    ax1.tick_params(axis="y", labelsize=7)
-
-    ax2 = ax1.twinx()
-    ax2.plot(x, rates, color="#1E88E5", marker="o", markersize=4,
-             linewidth=1.5, label="Yes Rate (%)")
-    ax2.set_ylabel("Rate (%)", fontsize=7, color="#1E88E5")
-    ax2.tick_params(axis="y", labelsize=7, colors="#1E88E5")
-    valid_rates = [r for r in rates if not pd.isna(r)]
-    ymax = max(valid_rates) if valid_rates else 0
-    ax2.set_ylim(0, max(100, ymax + 10))
-
-    handles1, labels1 = ax1.get_legend_handles_labels()
-    handles2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(handles1 + handles2, labels1 + labels2, fontsize=6, loc="upper left")
-    plt.tight_layout()
-    return fig
-
-
-
-def plot_yearly_categorical_combo(pmcf: pd.DataFrame, col: str, title: str, year_list: List[str]):
-    if col not in pmcf.columns or not year_list:
-        return None
-
-    valid = clean_string_series(pmcf[col])
-    categories = sorted(valid.unique().tolist())
-    if not categories:
-        return None
-
-    x = np.arange(len(year_list))
-    bw = max(0.08, min(0.22, 1.2 / max(len(categories), 1)))
-    offsets = np.linspace(-(len(categories) - 1) / 2 * bw, (len(categories) - 1) / 2 * bw, len(categories))
-    colors = (MULTI_COLORS * math.ceil(len(categories) / len(MULTI_COLORS)))[:len(categories)]
-
-    fig, ax1 = plt.subplots(figsize=(3.2, 2.4))
-    totals = []
-    for yr in year_list:
-        yr_valid = clean_string_series(pmcf[pmcf["__year"] == yr][col])
-        totals.append(int(yr_valid.shape[0]))
-
-    for idx, category in enumerate(categories):
-        counts = []
-        for yr in year_list:
-            yr_valid = clean_string_series(pmcf[pmcf["__year"] == yr][col])
-            counts.append(int((yr_valid == category).sum()))
-        ax1.bar(x + offsets[idx], counts, width=bw, color=colors[idx],
-                label=category[:18] + ("…" if len(category) > 18 else ""))
-
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(year_list, fontsize=7)
-    ax1.set_title(title, fontsize=9)
-    ax1.set_ylabel("Count", fontsize=7)
-    ax1.tick_params(axis="y", labelsize=7)
-
-    ax2 = ax1.twinx()
-    ax2.plot(x, totals, color="#1E88E5", marker="o", markersize=4,
-             linewidth=1.5, label="Total Responses")
-    ax2.set_ylabel("Total", fontsize=7, color="#1E88E5")
-    ax2.tick_params(axis="y", labelsize=7, colors="#1E88E5")
-    ax2.set_ylim(0, max(totals + [1]) * 1.2)
-
-    handles1, labels1 = ax1.get_legend_handles_labels()
-    handles2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(handles1 + handles2, labels1 + labels2, fontsize=5.5, loc="upper left")
-    plt.tight_layout()
-    return fig
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Coda
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1122,188 +900,284 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
     # 1. Summary
     # ═════════════════════════════════════════════════════════════════════════
     st.subheader("1. Summary")
-    render_section_separator()
 
+    # [1] KPI table at the very top of section 1
     kpi_df = pd.DataFrame({
-        "Matrix": ["Complaint Count", "PMCF Count", "Signal Detection", "Risk Level"],
+        "Metric": ["Complaint Count", "PMCF Count", "Signal Detection", "Risk Level"],
         "Value":  [len(complaint_df), len(pmcf_df), signal, risk],
     })
-    render_styled_table(kpi_df)
+    st.markdown(
+        kpi_df.style
+        .set_properties(**{"font-size":"16px","font-weight":"bold","text-align":"center"})
+        .set_table_styles([
+            {"selector":"th","props":[("font-size","18px"),("font-weight","bold"),
+                                       ("text-align","center"),("padding","8px 16px")]},
+            {"selector":"td","props":[("font-size","16px"),("padding","8px 16px"),
+                                       ("text-align","center")]},
+        ])
+        .hide(axis="index").to_html(),
+        unsafe_allow_html=True,
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
 
+    # Row 1: issue table + PMCF assessment table
     t1, t2 = st.columns(2)
     with t1:
         st.markdown("**Complaint Issue Table**")
-        render_styled_table(issue_table)
+        st.dataframe(issue_table, use_container_width=True)
     with t2:
         st.markdown("**PMCF Assessment Table**")
-        render_styled_table(pmcf_table)
+        st.dataframe(pmcf_table, use_container_width=True)
+
+    # Row 2: charts (4-col layout → same size as section 2)
+    g1, g2, g3, g4 = st.columns(4)
+    with g1:
+        if not issue_table.empty:
+            st.pyplot(plot_issue_bar(issue_table))
+        else:
+            st.info("No complaint data for chart.")
+    with g2:
+        if not pmcf_table.empty:
+            st.pyplot(plot_pmcf_bar(pmcf_table))
+        else:
+            st.info("No PMCF data for chart.")
 
     # ═════════════════════════════════════════════════════════════════════════
     # 2. PMCF Survey Statistics
     # ═════════════════════════════════════════════════════════════════════════
     st.subheader("2. PMCF Survey Statistics")
-    render_section_separator()
 
     years       = get_year_list(pmcf_df)
     latest_df   = get_latest_year_df(pmcf_df)
     latest_year = years[-1] if years else "All"
     has_years   = len(years) > 1
 
-    st.caption(f"PMCF statistics below are organised around the uploaded PMCF structure and prioritise the most recent year: **{latest_year}**.")
+    pmcf_kpis = build_structured_pmcf_kpis(latest_df)
+    if pmcf_kpis is not None:
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("SAE Rate",             f"{pmcf_kpis['sae_rate']}%")
+        m2.metric("Hemorrhage Rate",      f"{pmcf_kpis['hemorrhage_rate']}%")
+        m3.metric("Infection Rate",       f"{pmcf_kpis['infection_rate']}%")
+        m4.metric("Migration Rate",       f"{pmcf_kpis['migration_rate']}%")
+        m5.metric("1st Ligation Success", f"{pmcf_kpis['complete_ligation_rate']}%")
+        st.caption(f"ℹ️ KPI metrics based on most recent data: **{latest_year}**")
 
-    st.markdown("#### A. General & B. Device Usage")
-    ab_table = build_categorical_distribution_table(
-        latest_df,
-        [
-            ("A. General", "Follow-up Period", "Followup_Period"),
-            ("B. Device Usage", "Procedure Type", "Procedure_Type"),
-            ("B. Device Usage", "Surgical Approach", "Surgical_Approach"),
-        ],
-    )
-    render_styled_table(ab_table)
+    # ── A. General Information & B. Device Usage ──────────────────────────────
+    st.markdown("#### A. General Information & B. Device Usage")
+    ra1, ra2, ra3, ra4 = st.columns(4)
+    with ra1:
+        if "Followup_Period" in pmcf_df.columns:
+            fd = pmcf_df["Followup_Period"].value_counts(dropna=False).reindex(FOLLOWUP_ORDER, fill_value=0)
+            st.pyplot(plot_followup(fd))
+    with ra2:
+        fig = plot_categorical(pmcf_df, "Procedure_Type", "Procedure Type")
+        if fig: st.pyplot(fig)
+    with ra3:
+        fig = plot_categorical(pmcf_df, "Surgical_Approach", "Surgical Approach")
+        if fig: st.pyplot(fig)
+    with ra4:
+        clip_col = next((c for c in pmcf_df.columns
+                         if c.lower().replace(" ","_") in ["clip_size","clip_size_distribution",
+                                                            "clipsize","size"]), None)
+        if clip_col:
+            fig = plot_categorical(pmcf_df, clip_col, "Clip Size Distribution")
+            if fig: st.pyplot(fig)
 
-    render_subsection_spacer()
+    # ── C. Safety ────────────────────────────────────────────────────────────
     st.markdown("#### C. Safety")
-    safety_specs = [
-        ("SAE", "SAE", "binary"),
-        ("Hemorrhage", "Hemorrhage", "binary"),
-        ("Infection", "Infection", "binary"),
-        ("Migration", "Migration", "binary"),
-    ]
-    safety_rows = []
-    safety_lines = []
-    for idx, (label, col, mode) in enumerate(safety_specs, start=1):
-        yes, _, denom, rate = binary_yes_no_stats(latest_df, col, mode)
-        if denom:
-            safety_rows.append((label, col, mode))
-            safety_lines.append(f"{idx}. **{label} Rate**: {yes} / {denom} × 100 = {rate}%")
-    if safety_lines:
-        st.markdown("  \n".join(safety_lines))
-    saf_rate_df = build_binary_rate_table(latest_df, safety_rows)
-    render_styled_table(saf_rate_df)
+    st.caption(f"Safety incidence rates based on most recent data ({latest_year}). "
+               "Yearly distribution charts show Yes/No response count per year.")
 
+    # Latest-year safety rate table
+    safety_cols_list = ["SAE","Hemorrhage","Infection","Migration"]
+    safety_rate_rows = []
+    for col in safety_cols_list:
+        if col in latest_df.columns:
+            yes, denom, rate = safe_count_binary(latest_df, col)
+            safety_rate_rows.append({"Indicator": col,
+                                     "Yes (n)": yes,
+                                     "Sample (n)": denom,
+                                     "Incidence Rate (%)": rate})
+    if safety_rate_rows:
+        saf_rate_df = pd.DataFrame(safety_rate_rows)
+        st.dataframe(saf_rate_df, use_container_width=True)
+
+    # Yearly Yes/No distribution per safety indicator
     sc1, sc2, sc3, sc4 = st.columns(4)
-    for (label, col, mode), widget in zip(safety_specs, [sc1, sc2, sc3, sc4]):
-        with widget:
-            if has_years:
-                fig = plot_yearly_yes_no_combo(pmcf_df, col, f"{label} by Year", years, mode)
-            else:
-                fig = plot_binary_single(pmcf_df, col, label)
-            if fig:
-                st.pyplot(fig)
-            else:
-                st.info("No data available.")
+    safety_cols_ui = [("SAE", sc1), ("Hemorrhage", sc2), ("Infection", sc3), ("Migration", sc4)]
 
-    render_subsection_spacer()
+    def plot_yearly_binary(pmcf: pd.DataFrame, col: str, title: str, year_list: List[str]):
+        """Grouped bar: for each year show Yes / No counts."""
+        if col not in pmcf.columns or not year_list:
+            return None
+        yes_vals, no_vals = [], []
+        for yr in year_list:
+            sub = pmcf[pmcf["__year"] == yr][col].dropna()
+            yes_vals.append(int((sub == 1).sum()))
+            no_vals.append( int((sub == 0).sum()))
+        n  = len(year_list)
+        x  = np.arange(n)
+        bw = max(0.15, min(0.3, 1.8 / max(n, 1)))
+        fig, ax = plt.subplots(figsize=(3.2, 2.4))
+        ax.bar(x - bw/2, yes_vals, width=bw, color="#F44336", label="Yes")
+        ax.bar(x + bw/2, no_vals,  width=bw, color="#4CAF50", label="No")
+        ax.set_xticks(x)
+        ax.set_xticklabels(year_list, fontsize=7)
+        ax.set_title(title, fontsize=9)
+        ax.set_ylabel("Count", fontsize=7)
+        ax.tick_params(axis="y", labelsize=7)
+        ax.legend(fontsize=6, loc="upper right")
+        plt.tight_layout()
+        return fig
+
+    if has_years:
+        for col, col_widget in safety_cols_ui:
+            with col_widget:
+                fig = plot_yearly_binary(pmcf_df, col, f"{col} by Year", years)
+                if fig: st.pyplot(fig)
+    else:
+        # Single dataset — show simple Yes/No bar
+        for col, col_widget in safety_cols_ui:
+            with col_widget:
+                fig = plot_binary_single(pmcf_df, col, col)
+                if fig: st.pyplot(fig)
+
+    # ── D. Performance ────────────────────────────────────────────────────────
     st.markdown("#### D. Performance")
-    performance_spec = resolve_performance_spec(latest_df)
-    performance_specs = [
-        ("Ligation_Result", "Ligation_Result", "ligation_complete", "Complete ligation"),
-        ("Misfiring", "Misfiring", "binary", "Misfiring"),
-        ("Slippage", "Slippage", "binary", "Slippage"),
-    ]
-    perf_rate_specs = []
-    perf_lines = []
-    perf_counter = 1
-    for raw_label, col, mode, display_label in performance_specs:
-        yes, _, denom, rate = binary_yes_no_stats(latest_df, col, mode)
-        if denom:
-            perf_rate_specs.append((display_label, col, mode))
-            perf_lines.append(f"{perf_counter}. **{display_label} Rate**: {yes} / {denom} × 100 = {rate}%")
-            perf_counter += 1
-    if performance_spec is not None:
-        yes, _, denom, rate = binary_yes_no_stats(latest_df, performance_spec["col"], performance_spec["mode"])
-        if denom:
-            perf_rate_specs.append((performance_spec["label"], performance_spec["col"], performance_spec["mode"]))
-            perf_lines.append(f"{perf_counter}. **{performance_spec['label']} Rate**: {yes} / {denom} × 100 = {rate}%")
-    if perf_lines:
-        st.markdown("  \n".join(perf_lines))
-    if performance_spec is not None and performance_spec.get("derived"):
-        st.caption("Performance Rate is derived from Performance_Rating ≥ 4 (Good / Excellent) when a dedicated binary Performance column is not available.")
-    perf_rate_df = build_binary_rate_table(latest_df, perf_rate_specs)
-    render_styled_table(perf_rate_df)
+    st.caption(f"Performance metrics based on most recent data ({latest_year}). "
+               "Yearly charts show response distribution per year.")
 
+    # Latest-year Ligation complete rate
+    if "Ligation_Result" in latest_df.columns:
+        lig_s = latest_df["Ligation_Result"].dropna().astype(str).str.strip().str.lower()
+        n_lig = max(len(lig_s), 1)
+        complete_n    = int((lig_s.str.contains("complete")).sum())
+        complete_rate = round(complete_n / n_lig * 100, 1)
+        mis_yes, _, mis_rate   = safe_count_binary(latest_df, "Misfiring")
+        slip_yes,_, slip_rate  = safe_count_binary(latest_df, "Slippage")
+        pm1, pm2, pm3 = st.columns(3)
+        pm1.metric("Complete Ligation (%)", f"{complete_rate}%")
+        pm2.metric("Misfiring Rate (%)",    f"{mis_rate}%")
+        pm3.metric("Slippage Rate (%)",     f"{slip_rate}%")
+
+    # Yearly charts: Ligation / Misfiring / Slippage / Performance Rating
     pd1, pd2, pd3, pd4 = st.columns(4)
-    perf_chart_specs = [
-        ("Ligation Result", "Ligation_Result", "ligation_complete"),
-        ("Misfiring", "Misfiring", "binary"),
-        ("Slippage", "Slippage", "binary"),
-    ]
-    chart_slots = [pd1, pd2, pd3]
-    for (title, col, mode), widget in zip(perf_chart_specs, chart_slots):
-        with widget:
-            if has_years:
-                fig = plot_yearly_yes_no_combo(pmcf_df, col, f"{title} by Year", years, mode)
-            else:
-                if mode == "binary":
-                    fig = plot_binary_single(pmcf_df, col, title)
-                else:
-                    lig_yes, lig_no, _, _ = binary_yes_no_stats(pmcf_df, col, mode)
-                    if lig_yes + lig_no > 0:
-                        tmp_df = pd.DataFrame({"Response": ["Yes", "No"], "Count": [lig_yes, lig_no]})
-                        fig = _compact_bar(tmp_df["Response"].tolist(), tmp_df["Count"].tolist(), ["#F44336", "#4CAF50"], title, rotation=0)
-                    else:
-                        fig = None
-            if fig:
-                st.pyplot(fig)
-            else:
-                st.info("No data available.")
-    with pd4:
-        if performance_spec is not None:
-            if has_years:
-                fig = plot_yearly_yes_no_combo(pmcf_df, performance_spec["col"], "Performance by Year", years, performance_spec["mode"])
-            else:
-                if performance_spec["mode"] == "binary":
-                    fig = plot_binary_single(pmcf_df, performance_spec["col"], "Performance")
-                else:
-                    yes, no, _, _ = binary_yes_no_stats(pmcf_df, performance_spec["col"], performance_spec["mode"])
-                    if yes + no > 0:
-                        fig = _compact_bar(["Yes", "No"], [yes, no], ["#F44336", "#4CAF50"], "Performance", rotation=0)
-                    else:
-                        fig = None
-            if fig:
-                st.pyplot(fig)
-            else:
-                st.info("No data available.")
+
+    def plot_yearly_ligation(pmcf: pd.DataFrame, year_list: List[str]):
+        """Stacked bar: Complete / Partial / Fail per year."""
+        if "Ligation_Result" not in pmcf.columns or not year_list:
+            return None
+        cats   = ["complete","partial","fail"]
+        colors = {"complete":"#4CAF50","partial":"#FF9800","fail":"#F44336"}
+        data   = {c:[] for c in cats}
+        for yr in year_list:
+            sub = pmcf[pmcf["__year"]==yr]["Ligation_Result"].dropna().astype(str).str.strip().str.lower()
+            for c in cats:
+                data[c].append(int(sub.str.contains(c).sum()))
+        x  = np.arange(len(year_list))
+        bw = max(0.15, min(0.3, 1.8/max(len(year_list),1)))
+        fig, ax = plt.subplots(figsize=(3.2, 2.4))
+        bottom = np.zeros(len(year_list))
+        for c in cats:
+            ax.bar(x, data[c], width=bw, bottom=bottom, color=colors[c], label=c.capitalize())
+            bottom += np.array(data[c])
+        ax.set_xticks(x); ax.set_xticklabels(year_list, fontsize=7)
+        ax.set_title("Ligation Result by Year", fontsize=9)
+        ax.set_ylabel("Count", fontsize=7); ax.tick_params(axis="y", labelsize=7)
+        ax.legend(fontsize=6, loc="upper right")
+        plt.tight_layout(); return fig
+
+    def plot_yearly_perf_rating(pmcf: pd.DataFrame, year_list: List[str]):
+        """Line chart of mean Performance_Rating per year."""
+        if "Performance_Rating" not in pmcf.columns or not year_list:
+            return None
+        means = []
+        for yr in year_list:
+            sub = pd.to_numeric(pmcf[pmcf["__year"]==yr]["Performance_Rating"], errors="coerce").dropna()
+            means.append(round(sub.mean(), 2) if len(sub) > 0 else float("nan"))
+        fig, ax = plt.subplots(figsize=(3.2, 2.4))
+        ax.plot(year_list, means, marker="o", markersize=4, linewidth=1.5, color="#2196F3")
+        ax.set_ylim(0, 5.5)
+        ax.set_title("Performance Rating (Mean)", fontsize=9)
+        ax.set_ylabel("Score (1–5)", fontsize=7); ax.tick_params(labelsize=7)
+        for i, (yr, m) in enumerate(zip(year_list, means)):
+            if not math.isnan(m):
+                ax.annotate(f"{m}", (yr, m), textcoords="offset points",
+                            xytext=(0, 5), fontsize=6, ha="center")
+        plt.tight_layout(); return fig
+
+    with pd1:
+        if has_years:
+            fig = plot_yearly_ligation(pmcf_df, years)
         else:
-            st.info("No performance column available.")
+            fig = plot_categorical(pmcf_df, "Ligation_Result", "Ligation Result")
+        if fig: st.pyplot(fig)
+    with pd2:
+        if has_years:
+            fig = plot_yearly_binary(pmcf_df, "Misfiring", "Misfiring by Year", years)
+        else:
+            fig = plot_binary_single(pmcf_df, "Misfiring", "Misfiring")
+        if fig: st.pyplot(fig)
+    with pd3:
+        if has_years:
+            fig = plot_yearly_binary(pmcf_df, "Slippage", "Slippage by Year", years)
+        else:
+            fig = plot_binary_single(pmcf_df, "Slippage", "Slippage")
+        if fig: st.pyplot(fig)
+    with pd4:
+        if has_years:
+            fig = plot_yearly_perf_rating(pmcf_df, years)
+        else:
+            fig = plot_performance(performance_distribution(pmcf_df)) if performance_distribution(pmcf_df) is not None else None
+        if fig: st.pyplot(fig)
 
-    render_subsection_spacer()
+    # ── E. Overall Clinical Assessment ───────────────────────────────────────
     st.markdown("#### E. Overall Clinical Assessment")
-    overall_table = build_categorical_distribution_table(
-        latest_df,
-        [
-            ("E. Overall Clinical Assessment", "Intended Purpose", "Intended_Purpose"),
-            ("E. Overall Clinical Assessment", "Benefit-Risk Assessment", "Benefit_Risk"),
-        ],
-    )
-    render_styled_table(overall_table)
 
-    ea1, ea2 = st.columns(2)
+    def plot_yearly_categorical(pmcf: pd.DataFrame, col: str, title: str, year_list: List[str]):
+        """Grouped bar: each year shows value distribution stacked/side-by-side."""
+        if col not in pmcf.columns or not year_list:
+            return None
+        all_vals = pmcf[col].dropna().astype(str).str.strip().unique().tolist()
+        all_vals = sorted([v for v in all_vals if v.lower() not in ("nan","none","<na>","")])
+        if not all_vals:
+            return None
+        colors = (MULTI_COLORS * math.ceil(len(all_vals)/len(MULTI_COLORS)))[:len(all_vals)]
+        x  = np.arange(len(year_list))
+        bw = max(0.1, min(0.25, 1.5/max(len(all_vals),1)))
+        offsets = np.linspace(-(len(all_vals)-1)/2*bw, (len(all_vals)-1)/2*bw, len(all_vals))
+        fig, ax = plt.subplots(figsize=(3.2, 2.4))
+        for i, (val, color) in enumerate(zip(all_vals, colors)):
+            counts = []
+            for yr in year_list:
+                sub = pmcf[pmcf["__year"]==yr][col].dropna().astype(str).str.strip()
+                counts.append(int((sub == val).sum()))
+            ax.bar(x + offsets[i], counts, width=bw, color=color,
+                   label=val[:15] + ("…" if len(val) > 15 else ""))
+        ax.set_xticks(x); ax.set_xticklabels(year_list, fontsize=7)
+        ax.set_title(title, fontsize=9); ax.set_ylabel("Count", fontsize=7)
+        ax.tick_params(axis="y", labelsize=7)
+        ax.legend(fontsize=5, loc="upper left", ncol=1)
+        plt.tight_layout(); return fig
+
+    ea1, ea2, ea3, ea4 = st.columns(4)
     with ea1:
         if has_years:
-            fig = plot_yearly_categorical_combo(pmcf_df, "Intended_Purpose", "Intended Purpose by Year", years)
+            fig = plot_yearly_categorical(pmcf_df, "Intended_Purpose", "Intended Purpose by Year", years)
         else:
             fig = plot_categorical(pmcf_df, "Intended_Purpose", "Intended Purpose")
-        if fig:
-            st.pyplot(fig)
-        else:
-            st.info("No data available.")
+        if fig: st.pyplot(fig)
     with ea2:
         if has_years:
-            fig = plot_yearly_categorical_combo(pmcf_df, "Benefit_Risk", "Benefit-Risk Assessment by Year", years)
+            fig = plot_yearly_categorical(pmcf_df, "Benefit_Risk", "Benefit-Risk by Year", years)
         else:
             fig = plot_categorical(pmcf_df, "Benefit_Risk", "Benefit-Risk Assessment")
-        if fig:
-            st.pyplot(fig)
-        else:
-            st.info("No data available.")
+        if fig: st.pyplot(fig)
 
     # ═════════════════════════════════════════════════════════════════════════
     # 3. Complaint Statistics  (unchanged)
     # ═════════════════════════════════════════════════════════════════════════
     st.subheader("3. Complaint Statistics")
-    render_section_separator()
     cs1, cs2, cs3 = st.columns(4)[:3]
     with cs1:
         if not issue_table.empty:
@@ -1321,10 +1195,10 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
     # 4. Trend Analysis
     # ═════════════════════════════════════════════════════════════════════════
     st.subheader("4. Trend Analysis")
-    render_section_separator()
-    st.markdown("**Reference standard**: ISO/TR 20416:2020 · MDCG 2020-5 · EU MDR 2017/745 Article 88")
-    st.markdown(
-        f"**Statistical methodology**: Monthly observed event rates are compared against a {TREND_BASELINE_WINDOW}-month rolling baseline and pre-defined thresholds (Safety ≥ 5%, Performance ≥ 8%, Ligation fail ≥ 5%) to identify latest-year and year-over-year trend signals."
+    st.caption(
+        f"📐 Reference: ISO/TR 20416:2020 · MDCG 2020-5 · EU MDR 2017/745 Article 88  |  "
+        f"Baseline = {TREND_BASELINE_WINDOW}-month rolling average  |  "
+        f"Safety threshold ≥5%  ·  Performance threshold ≥8%  ·  Ligation fail ≥5%"
     )
 
     SAFETY_THRESHOLD      = 5.0
@@ -1387,8 +1261,7 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
                 breach = True
         ax.axhline(threshold_pct, color="#F44336", linewidth=1, linestyle=":",
                    label=f"Threshold ({threshold_pct:.0f}%)")
-        ax.set_title(title, fontsize=9)
-        ax.set_ylabel("Rate (%)", fontsize=7)
+        ax.set_title(title, fontsize=9); ax.set_ylabel("Rate (%)", fontsize=7)
         ax.tick_params(axis="y", labelsize=7)
         ax.set_xticks(range(len(months_str)))
         ax.set_xticklabels(months_str, rotation=30, ha="right", fontsize=6)
@@ -1399,16 +1272,15 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
     safety_breach = False
     performance_breach = False
 
+    # Row 1: Latest year trends
     st.markdown(f"**Row 1 — Latest Year Trend ({latest_year})**")
     trd1, trd2, trd3, trd4 = st.columns(4)
     safety_trend_latest = compute_pmcf_binary_trend(latest_df, ["SAE","Hemorrhage","Infection","Migration"])
     perf_trend_latest   = compute_pmcf_binary_trend(latest_df, ["Misfiring","Slippage"])
     lig_trend_latest    = compute_ligation_trend(latest_df)
     perf_combined_latest = {}
-    if perf_trend_latest:
-        perf_combined_latest.update(perf_trend_latest)
-    if lig_trend_latest:
-        perf_combined_latest.update(lig_trend_latest)
+    if perf_trend_latest:  perf_combined_latest.update(perf_trend_latest)
+    if lig_trend_latest:   perf_combined_latest.update(lig_trend_latest)
 
     with trd1:
         st.markdown("**Safety**")
@@ -1431,12 +1303,13 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         else:
             st.info("No date data.")
 
+    # Row 2: Year-over-year comparison (if multiple years)
     if has_years:
-        render_subsection_spacer()
         st.markdown("**Row 2 — Year-over-Year Trend**")
 
         def plot_yoy_bar(pmcf: pd.DataFrame, cols: List[str],
                          threshold_pct: float, title: str, year_list: List[str]):
+            """Bar chart: mean Yes-rate per year for a group of binary cols."""
             data = {}
             for col in cols:
                 if col not in pmcf.columns:
@@ -1460,10 +1333,8 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
                 ax.bar(x + offsets[i], rates, width=bw, color=color, label=col)
             ax.axhline(threshold_pct, color="#F44336", linewidth=1, linestyle=":",
                        label=f"Threshold ({threshold_pct:.0f}%)")
-            ax.set_xticks(x)
-            ax.set_xticklabels(year_list, fontsize=7)
-            ax.set_title(title, fontsize=9)
-            ax.set_ylabel("Rate (%)", fontsize=7)
+            ax.set_xticks(x); ax.set_xticklabels(year_list, fontsize=7)
+            ax.set_title(title, fontsize=9); ax.set_ylabel("Rate (%)", fontsize=7)
             ax.tick_params(axis="y", labelsize=7)
             ax.legend(fontsize=6, loc="upper left")
             plt.tight_layout()
@@ -1473,14 +1344,13 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
         with yoy1:
             fig = plot_yoy_bar(pmcf_df, ["SAE","Hemorrhage","Infection","Migration"],
                                SAFETY_THRESHOLD, "Safety YoY", years)
-            if fig:
-                st.pyplot(fig)
+            if fig: st.pyplot(fig)
         with yoy2:
             fig = plot_yoy_bar(pmcf_df, ["Misfiring","Slippage"],
                                PERFORMANCE_THRESHOLD, "Misfiring/Slippage YoY", years)
-            if fig:
-                st.pyplot(fig)
+            if fig: st.pyplot(fig)
         with yoy3:
+            # Ligation fail rate YoY
             if "Ligation_Result" in pmcf_df.columns:
                 fail_rates = []
                 for yr in years:
@@ -1491,15 +1361,13 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
                 ax_lig.bar(range(len(years)), fail_rates, width=bw_lig, color="#FF9800")
                 ax_lig.axhline(LIGATION_THRESHOLD, color="#F44336", linewidth=1,
                                linestyle=":", label=f"Threshold ({LIGATION_THRESHOLD}%)")
-                ax_lig.set_xticks(range(len(years)))
-                ax_lig.set_xticklabels(years, fontsize=7)
+                ax_lig.set_xticks(range(len(years))); ax_lig.set_xticklabels(years, fontsize=7)
                 ax_lig.set_title("Ligation Fail Rate YoY", fontsize=9)
-                ax_lig.set_ylabel("Rate (%)", fontsize=7)
-                ax_lig.tick_params(axis="y", labelsize=7)
-                ax_lig.legend(fontsize=6)
-                plt.tight_layout()
+                ax_lig.set_ylabel("Rate (%)", fontsize=7); ax_lig.tick_params(axis="y", labelsize=7)
+                ax_lig.legend(fontsize=6); plt.tight_layout()
                 st.pyplot(fig_lig)
         with yoy4:
+            # Mean performance rating YoY
             if "Performance_Rating" in pmcf_df.columns:
                 means_yoy = []
                 for yr in years:
@@ -1508,72 +1376,67 @@ if st.button("🚀 Run Full Analysis", use_container_width=True):
                     means_yoy.append(round(sub.mean(),2) if len(sub)>0 else float("nan"))
                 fig_pr, ax_pr = plt.subplots(figsize=(3.2, 2.4))
                 ax_pr.plot(years, means_yoy, marker="o", markersize=4, linewidth=1.5, color="#2196F3")
-                ax_pr.set_ylim(0,5.5)
-                ax_pr.set_title("Performance Rating YoY", fontsize=9)
-                ax_pr.set_ylabel("Mean Score (1–5)", fontsize=7)
-                ax_pr.tick_params(labelsize=7)
+                ax_pr.set_ylim(0,5.5); ax_pr.set_title("Performance Rating YoY", fontsize=9)
+                ax_pr.set_ylabel("Mean Score (1–5)", fontsize=7); ax_pr.tick_params(labelsize=7)
                 for yr, m in zip(years, means_yoy):
                     if not math.isnan(m):
                         ax_pr.annotate(f"{m}",(yr,m),textcoords="offset points",
                                        xytext=(0,5),fontsize=6,ha="center")
-                plt.tight_layout()
-                st.pyplot(fig_pr)
+                plt.tight_layout(); st.pyplot(fig_pr)
 
+    # Threshold compliance table
     any_breach = safety_breach or performance_breach
     trend_summary_rows = []
     for col in ["SAE","Hemorrhage","Infection","Migration"]:
         if safety_trend_latest and col in safety_trend_latest:
             s = safety_trend_latest[col]
             latest_val = s.iloc[-1] if len(s)>0 else float("nan")
-            trend_summary_rows.append({
-                "Category": "Safety",
-                "Indicator": col,
+            trend_summary_rows.append({"Category":"Safety","Indicator":col,
                 "Latest Rate (%)": round(latest_val,1) if not math.isnan(latest_val) else "N/A",
                 "Threshold (%)": SAFETY_THRESHOLD,
-                "Breach": "⚠️ YES" if not math.isnan(latest_val) and latest_val >= SAFETY_THRESHOLD else "✅ NO",
-            })
+                "Breach": "⚠️ YES" if not math.isnan(latest_val) and latest_val >= SAFETY_THRESHOLD else "✅ NO"})
     for col in ["Misfiring","Slippage","Ligation_Fail"]:
         src = perf_combined_latest if col != "Ligation_Fail" else (lig_trend_latest or {})
         if src and col in src:
             s = src[col]
             latest_val = s.iloc[-1] if len(s)>0 else float("nan")
             thresh = LIGATION_THRESHOLD if col == "Ligation_Fail" else PERFORMANCE_THRESHOLD
-            trend_summary_rows.append({
-                "Category": "Performance",
-                "Indicator": col,
+            trend_summary_rows.append({"Category":"Performance","Indicator":col,
                 "Latest Rate (%)": round(latest_val,1) if not math.isnan(latest_val) else "N/A",
                 "Threshold (%)": thresh,
-                "Breach": "⚠️ YES" if not math.isnan(latest_val) and latest_val >= thresh else "✅ NO",
-            })
+                "Breach": "⚠️ YES" if not math.isnan(latest_val) and latest_val >= thresh else "✅ NO"})
     if trend_summary_rows:
         st.markdown("**Threshold Compliance Summary**")
-        render_styled_table(pd.DataFrame(trend_summary_rows))
+        st.dataframe(pd.DataFrame(trend_summary_rows), use_container_width=True)
 
+    # MDR Article 88
     st.markdown("---")
     st.markdown("#### 📋 MDR Article 88 — Trend Reporting Assessment")
     if any_breach:
-        st.error("""⚠️ **Trend Reporting to Competent Authority Required**
-
-One or more indicators exceeded the pre-defined statistical threshold (per ISO/TR 20416:2020 and MDCG 2020-5 §4.3).
-
-Under **EU MDR 2017/745 Article 88**, report without undue delay.
-
-**Required actions:**
-- Submit Trend Report via EUDAMED.
-- Initiate root-cause investigation (MDR Art. 89).
-- Update Risk Management File (EN ISO 14971:2019).
-- Document in PMS Report / PSUR per MDR Annex III and MDCG 2022-21.
-- Notify Notified Body if GSPRs (MDR Annex I) are affected.""")
+        st.error(
+            "⚠️ **Trend Reporting to Competent Authority Required**\n\n"
+            "One or more indicators exceeded the pre-defined statistical threshold "
+            "(per ISO/TR 20416:2020 and MDCG 2020-5 §4.3).\n\n"
+            "Under **EU MDR 2017/745 Article 88**, report without undue delay.\n\n"
+            "**Required actions:**\n"
+            "- Submit Trend Report via EUDAMED.\n"
+            "- Initiate root-cause investigation (MDR Art. 89).\n"
+            "- Update Risk Management File (EN ISO 14971:2019).\n"
+            "- Document in PMS Report / PSUR per MDR Annex III and MDCG 2022-21.\n"
+            "- Notify Notified Body if GSPRs (MDR Annex I) are affected."
+        )
     else:
-        st.success("""✅ **No Trend Reporting Required at This Time**
+        st.success(
+            "✅ **No Trend Reporting Required at This Time**\n\n"
+            "All indicators remain within pre-defined thresholds. "
+            "No statutory notification under **EU MDR 2017/745 Article 88** is triggered.\n\n"
+            "**Ongoing obligations:**\n"
+            "- Continue monthly monitoring per ISO/TR 20416:2020.\n"
+            "- Re-evaluate thresholds annually (MDCG 2020-7 §3.4).\n"
+            "- Document in PMS Report / PSUR per MDR Annex III."
+        )
 
-All indicators remain within pre-defined thresholds. No statutory notification under **EU MDR 2017/745 Article 88** is triggered.
-
-**Ongoing obligations:**
-- Continue monthly monitoring per ISO/TR 20416:2020.
-- Re-evaluate thresholds annually (MDCG 2020-7 §3.4).
-- Document in PMS Report / PSUR per MDR Annex III.""")
-
+    # Statistical methodology note
     st.markdown("---")
     with st.expander("📊 Statistical Methodology"):
         st.markdown("""
@@ -1593,18 +1456,23 @@ All indicators remain within pre-defined thresholds. No statutory notification u
 > Pre-defined thresholds are consistent with the PMCF Plan and are subject to annual review per MDCG 2020-7.
 """.format(baseline=TREND_BASELINE_WINDOW))
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # 5) Data Analysis Summary
+    # ─────────────────────────────────────────────────────────────────────────
     st.subheader("5) Data Analysis Summary")
-    render_section_separator()
     st.write(summary)
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # 6) Benefit-Risk Analysis Summary
+    # ─────────────────────────────────────────────────────────────────────────
     st.subheader("6) Benefit-Risk Analysis Summary")
-    render_section_separator()
     st.info(
         "📋 Reference: EU MDR 2017/745 · EN ISO 14971:2019 · EN ISO 13485:2016 · "
         "MDCG 2020-5 · MDCG 2020-6 · MDCG 2020-7"
     )
     st.write(br_summary)
 
+    # ── PDF download ──────────────────────────────────────────────────────────
     st.download_button(
         "📄 Download PDF Report", data=pdf_bytes,
         file_name=f"AI_PMS_PMCF_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
